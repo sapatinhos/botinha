@@ -5,6 +5,7 @@ org 0x7c00
 %define VIDEO 0xb8000
 %define BLUE  0x11      ; blue foreground and blue background
 %define LGBL  0x07      ; light gray foreground and black background
+%define SCREEN_LEN 0X7d0
 
 ; string operations go forward
 cld
@@ -15,14 +16,6 @@ mov es, ax
 mov ds, ax
 mov ss, ax
 
-; clear screen
-mov ah, 0x06    ; scroll window up service
-xor al, al      ; clear window
-mov bh, BLUE    ; fill color
-xor cx, cx      ; upper left corner
-mov dx, -1      ; lower right corner
-int 0x10        ; video services interrupt
-
 ; set stack pointers
 mov sp, STACK
 mov bp, STACK
@@ -31,10 +24,10 @@ mov bp, STACK
 
 ; disable interrupts, including NMI
 cli
-in al, 0x70
-or al, 0x80
-out 0x70, al
-in al, 0x71
+;in al, 0x70
+;or al, 0x80
+;out 0x70, al
+;in al, 0x71
 
 ; enable A20
 in al, 0x92     ; this may cause problems for very old systems
@@ -56,9 +49,15 @@ bits 32
 
 ; set remaining segment registers
 pmode:
-mov  ax, gdt.cs - gdt
+mov  ax, gdt.ds - gdt
 mov  ds, ax
+mov  ss, ax
 mov  es, ax
+mov  fs, ax
+mov  gs, ax
+
+push BLUE
+call clear_screen
 
 push hello
 call print32
@@ -86,6 +85,30 @@ print32:
 
     cmp  byte [esi], 0      ; check for null terminator
     jne  print32.loop       ; if there are still characters to print, continue
+
+    pop ebp
+    ret
+
+clear_screen:
+    push ebp
+    mov  ebp, esp
+    
+    mov  dl, 0x20           ; empty space to fill the screen 
+    mov  dh, [ebp + 8]      ; read color to fill screen
+
+    mov  edi, VIDEO         ; load video memory adress
+
+    mov  eax, SCREEN_LEN*2  ; load length of screen to fill, 2 bytes per cell 
+    
+    mov  ecx, 0
+
+.loop: 
+    mov [edi + ecx], dx   
+    
+    add ecx, 2    
+
+    cmp ecx, eax
+    jbe clear_screen.loop
 
     pop ebp
     ret
