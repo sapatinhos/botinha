@@ -3,6 +3,8 @@ org 0x7c00
 
 %define STACK 0x7c00
 %define VIDEO 0xb8000
+%define BLUE  0x11      ; blue foreground and blue background
+%define LGBL  0x07      ; light gray foreground and black background
 
 ; string operations go forward
 cld
@@ -13,19 +15,17 @@ mov es, ax
 mov ds, ax
 mov ss, ax
 
+; clear screen
+mov ah, 0x06    ; scroll window up service
+xor al, al      ; clear window
+mov bh, BLUE    ; fill color
+xor cx, cx      ; upper left corner
+mov dx, -1      ; lower right corner
+int 0x10        ; video services interrupt
+
 ; set stack pointers
 mov sp, STACK
 mov bp, STACK
-
-; print hello
-mov si, 0
-print_hello:
-    mov ah, 0x0e                ; display char code
-    mov al, [hello + si]        ; move char into al
-    int 0x10                    ; video interrupt
-    add si, 1
-    cmp byte [hello + si], 0    ; check for null terminator
-    jne print_hello
 
 ; enable protected mode
 
@@ -49,68 +49,72 @@ smsw ax
 or   ax, 1
 lmsw ax
 
+; clear pipeline and set cs register
+jmp  gdt.cs - gdt : pmode
+
 bits 32
 
-; print protected
-push protected
+; set remaining segment registers
+pmode:
+mov  ax, gdt.cs - gdt
+mov  ds, ax
+mov  es, ax
+
+push hello
 call print32
 
+; halt
 jmp $
 
 ; functions
+
 ; print a string in protected mode
 print32:
     push ebp
     mov  ebp, esp
 
-    mov  esi, [ebp + 16]        ; read string address into eax
+    mov  esi, [ebp + 8]     ; read string address into eax
+    mov  edi, VIDEO         ; write video address to edi
 
-    xor  eax, eax
 .loop:
-    mov  dh, [esi + eax]
-    mov  dl, 0x07
-    mov  [VIDEO], dx
-    inc  eax
-    cmp  byte [esi + eax], 0     ; check for null terminator
-    jne  print32.loop
+    mov  dl, [esi]          ; set di to the current character
+    mov  dh, LGBL           ; print with dos colors
+    mov  [edi], dx          ; write to video memory
+
+    inc  esi
+    add  edi, 2
+
+    cmp  byte [esi], 0      ; check for null terminator
+    jne  print32.loop       ; if there are still characters to print, continue
 
     pop ebp
     ret
 
 ; data
 hello:
-    db "sapatinhos v0.1", 0
-
-protected:
-    db "protected", 0
+    db "sapatinhos v0.32", 0
 
 ; GDT
 gdtr:
     dw gdtend - gdt ; gdt size
     dd gdt          ; gdt offset
 gdt:
-    ; null descriptor
-
+.null:
     dq 0
-
-    ; cs
-
+.cs:
     dw 0xffff       ; limit [15:0]
     dw 0x0000       ; base [15:0]
     db 0x00         ; base [23:16]
     db 0b10011011   ; access byte
     db 0b01001111   ; flags [3:0] limit [51:48]
     db 0x00         ; base [63:56]
-
-    ; ds
-
+.ds:
     dw 0xffff       ; limit [15:0]
     dw 0x0000       ; base [15:0]
     db 0x00         ; base [23:16]
     db 0b10010011   ; access byte
     db 0b01001111   ; flags [3:0] limit [51:48]
     db 0x00         ; base [63:56]
-
 gdtend:
 
 times 510 - ($ - $$) db 0
