@@ -3,9 +3,9 @@ org 0x7c00
 
 %define STACK 0x7c00
 %define VIDEO 0xb8000
-%define BLUE  0x11      ; blue foreground and blue background
-%define LGBL  0x07      ; light gray foreground and black background
-%define SCREEN_LEN 0X7d0
+%define BLUE  0x11          ; blue foreground and blue background
+%define LGBL  0x07          ; light gray foreground and black background
+%define SCREEN_LEN 0x7d0
 
 ; string operations go forward
 cld
@@ -22,7 +22,6 @@ mov bp, STACK
 
 ; enable protected mode
 
-; disable interrupts to avoid interrupts during switch to protected mode
 ; disable maskable interrupts
 cli
 
@@ -95,20 +94,20 @@ print32:
 clear_screen:
     push ebp
     mov  ebp, esp
-    
-    mov  dl, 0x20           ; empty space to fill the screen 
+
+    mov  dl, 0x20           ; empty space to fill the screen
     mov  dh, [ebp + 8]      ; read color to fill screen
 
     mov  edi, VIDEO         ; load video memory adress
 
-    mov  eax, SCREEN_LEN*2  ; load length of screen to fill, 2 bytes per cell 
-    
+    mov  eax, SCREEN_LEN*2  ; load length of screen to fill, 2 bytes per cell
+
     mov  ecx, 0
 
-.loop: 
+.loop:
     mov [edi + ecx], dx     ; write to video memory
-    
-    add ecx, 2    
+
+    add ecx, 2
 
     cmp ecx, eax            ; check if wrote to the whole screen
     jbe clear_screen.loop
