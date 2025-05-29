@@ -22,12 +22,15 @@ mov bp, STACK
 
 ; enable protected mode
 
-; disable interrupts, including NMI
+; disable interrupts to avoid interrupts during switch to protected mode
+; disable maskable interrupts
 cli
-;in al, 0x70
-;or al, 0x80
-;out 0x70, al
-;in al, 0x71
+
+; disable non maskable interrupts
+in al, 0x70
+or al, 0x80
+out 0x70, al
+in al, 0x71
 
 ; enable A20
 in al, 0x92     ; this may cause problems for very old systems
@@ -103,11 +106,11 @@ clear_screen:
     mov  ecx, 0
 
 .loop: 
-    mov [edi + ecx], dx   
+    mov [edi + ecx], dx     ; write to video memory
     
     add ecx, 2    
 
-    cmp ecx, eax
+    cmp ecx, eax            ; check if wrote to the whole screen
     jbe clear_screen.loop
 
     pop ebp
