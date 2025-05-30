@@ -1,7 +1,7 @@
 SRC := stage0.asm
 BIN := boot
 
-$(BIN):
+$(BIN): clean
 	nasm $(SRC) -o $(BIN)
 
 run: $(BIN)
