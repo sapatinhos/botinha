@@ -5,7 +5,7 @@ org 0x7c00
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
 %define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
 %define FILL_CHAR 0x20      ; space ascii code
-%define FILL_COLOR 0x11     ; blue foreground and blue background
+%define FILL_COLOR 0x17     ; light gray foreground and blue background
 %define PRINT_COLOR 0x07    ; light gray foreground and black background
 
 ; entry point -----------------------------------------------------------------
@@ -44,22 +44,51 @@ jmp $
 
 ; get current cursor position
 get_cursor:
+    mov  dx, 0x3d4  ; dx = io port
+    mov  al, 0x0f   ; al = read / write
+
+    out  dx, al     ; outb (0x3d4, 0x0f)
+
+    inc  dx
+    in   al, dx     ; pos |= inb (0x3d5)
+    mov  cl, al
+
+    mov  al, 0x0e
+    dec  dx
+    out  dx, al     ; outb (0x3d4, 0x0e)
+
+    inc  dx
+    in   al, dx     ; pos |= (inb (0x3D5) << 8)
+    mov  ch, al
+
+    mov  ax, cx     ; ax = cursor position
+
+    ret
+
+; set cursor position
+set_cursor:
     push bp
     mov  bp, sp
 
-    mov  dx, 0x3d4  ; dx = io port
-    mov  ax, 0x0e0f ; ax = values to write
+    mov  cx, [bp + 4]   ; cx = cursor position
+    and  cx, 0xffff
 
-    out  dx, al
+    mov  dx, 0x3d4      ; dx = io port
+    mov  al, 0x0f       ; al = read / write
+
+    out  dx, al         ; outb (0x3d4, 0x0f)
 
     inc  dx
-    in   al, dx
+    mov  al, cl
+    out  dx, al         ; outb (0x3d5, (pos & 0xff))
 
+    mov  al, 0x0e
     dec  dx
-    out  dx, ah
+    out  dx, al         ; outb (0x3d4, 0x0e)
 
     inc  dx
-    in   ah, dx     ; ax = cursor position
+    mov  al, ch
+    out  dx, al         ; outb (0x3d5, ((pos >> 8 ) & 0xff))
 
     pop  bp
     ret
@@ -85,6 +114,11 @@ clear_scr:
 
     cmp  di, VIDEO_LEN      ; if we didn't write VIDEO_LEN bytes,
     jbe  clear_scr.loop     ;   repeat
+
+    ; set cursor position to zero
+    push 0x0
+    call set_cursor
+    add  sp, 2              ; pop 0x0
 
     pop  bp
     ret
