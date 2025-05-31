@@ -4,6 +4,8 @@ org 0x7c00
 %define STACK 0x7c00        ; set the stack to be below where we were loaded
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
 %define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
+%define VIDEO_COL 80        ; 80 columns
+%define VIDEO_ROW 25        ; 25 rows
 %define FILL_CHAR 0x20      ; space ascii code
 %define FILL_COLOR 0x17     ; light gray foreground and blue background
 %define PRINT_COLOR 0x07    ; light gray foreground and black background
@@ -27,6 +29,8 @@ call clear_scr
 push hello
 call print_str
 add  sp, 2      ; pop hello
+
+call nl_cursor
 
 ; string operations go forward
 cld
@@ -93,6 +97,27 @@ set_cursor:
     pop  bp
     ret
 
+; moves the cursor to the next line
+nl_cursor:
+    push bp
+    mov  bp, sp
+
+    call get_cursor     ; ax = current cursor position
+    mov  cx, ax         ; save ax in cx
+
+    mov  dx, VIDEO_COL  ; zero dh and set dl to VIDEO_COL
+    div  dl             ; ah = ax mod VIDEO_COL
+
+    sub  dl, ah         ; dl = how many characters to reach the next line
+    add  cx, dx         ; cx = next line cursor position
+
+    push cx
+    call set_cursor     ; update cursor position
+    add  sp, 2          ; pop cx
+
+    pop  bp
+    ret
+
 ; fills video memory with FILL_CHARs colored FILL_COLOR
 clear_scr:
     push bp
@@ -128,13 +153,16 @@ print_str:
     push bp
     mov  bp, sp
 
+    ; fs:di = address to write
+    call get_cursor         ; ax = current cursor position
+    shl  ax, 1
+    mov  di, ax             ; di = video memory offset
+
+    mov  ax, VIDEO_SEG
+    mov  fs, ax             ; fs = video memory base address (>> 4)
+
     mov  si, [bp + 4]       ; si = string address
     mov  dh, PRINT_COLOR    ; dh = text color
-
-    ; fs:di = address to write
-    mov  ax, VIDEO_SEG
-    mov  fs, ax
-    xor  di, di
 
 .loop:
     mov  dl, [si]           ; dl = current character
@@ -145,6 +173,11 @@ print_str:
 
     cmp  byte [si], 0x0     ; check for null terminator
     jne  print_str.loop     ; if there are still characters to print, continue
+
+    shr  di, 1              ; di = cursor position after printing the str
+    push di
+    call set_cursor         ; update cursor position
+    add  sp, 2              ; pop di
 
     pop  bp
     ret
