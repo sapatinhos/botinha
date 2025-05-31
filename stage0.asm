@@ -26,11 +26,9 @@ mov bp, STACK
 call clear_scr
 
 ; print a hello message
-push hello
+push hello_str
 call print_str
-add  sp, 2      ; pop hello
-
-call nl_cursor
+add  sp, 2      ; pop hello_str
 
 ; string operations go forward
 cld
@@ -38,8 +36,16 @@ cld
 ; TODO
 
 ; relocate ourselves ...
+call nl_cursor
+push reloc_str
+call print_str
+add  sp, 2      ; pop reloc_str
 
 ; load second stage from disk ...
+call nl_cursor
+push load_str
+call print_str
+add  sp, 2      ; pop load_str
 
 ; halt
 jmp $
@@ -184,8 +190,17 @@ print_str:
 
 ; data ------------------------------------------------------------------------
 
-hello:
-    db "Real Mode", 0
+hello_str:
+    db "Real mode", 0
+
+reloc_str:
+    db "Relocating", 0
+
+load_str:
+    db "Loading stage1", 0
+
+notfound_str:
+    db "Boot partition not found!", 0
 
 times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
 dw 0xaa55                   ; mbr magic byte
