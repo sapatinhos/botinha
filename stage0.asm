@@ -34,14 +34,14 @@ jmp  start - LOAD + RELOC   ; jump to relocated code
 
 start:
 ; clear screen and reset cursor
-call clear_scr
+call clearscr
 
 ; print a hello message
-push hello_str
-call print_str
+push str.hello
+call print
 add  sp, 2                  ; pop hello_str
 
-; load second stage from disk ...
+; load second stage from disk
 
 
 
@@ -50,8 +50,9 @@ jmp $
 
 ; functions -------------------------------------------------------------------
 
+cursor:
 ; get current cursor position
-get_cursor:
+.get:
     mov  dx, 0x3d4  ; dx = io port
     mov  al, 0x0f   ; al = read / write
 
@@ -74,7 +75,7 @@ get_cursor:
     ret
 
 ; set cursor position
-set_cursor:
+.set:
     push bp
     mov  bp, sp
 
@@ -102,11 +103,11 @@ set_cursor:
     ret
 
 ; moves the cursor to the next line
-nl_cursor:
+.break:
     push bp
     mov  bp, sp
 
-    call get_cursor     ; ax = current cursor position
+    call cursor.get     ; ax = current cursor position
     mov  cx, ax         ; save ax in cx
 
     mov  dx, VIDEO_COL  ; zero dh and set dl to VIDEO_COL
@@ -116,14 +117,14 @@ nl_cursor:
     add  cx, dx         ; cx = next line cursor position
 
     push cx
-    call set_cursor     ; update cursor position
+    call cursor.set     ; update cursor position
     add  sp, 2          ; pop cx
 
     pop  bp
     ret
 
 ; fills video memory with FILL_CHARs colored FILL_COLOR and reset cursor
-clear_scr:
+clearscr:
     push bp
     mov  bp, sp
 
@@ -142,23 +143,23 @@ clear_scr:
     add  di, 2              ; go forward 2 bytes
 
     cmp  di, VIDEO_LEN      ; if we didn't write VIDEO_LEN bytes,
-    jbe  clear_scr.loop     ;   repeat
+    jbe  clearscr.loop     ;   repeat
 
     ; set cursor position to zero
     push 0x0
-    call set_cursor
+    call cursor.set
     add  sp, 2              ; pop 0x0
 
     pop  bp
     ret
 
 ; print a null-terminated string
-print_str:
+print:
     push bp
     mov  bp, sp
 
     ; fs:di = address to write
-    call get_cursor         ; ax = current cursor position
+    call cursor.get         ; ax = current cursor position
     shl  ax, 1
     mov  di, ax             ; di = video memory offset
 
@@ -176,11 +177,11 @@ print_str:
     add  di, 2              ; go forward 2 bytes on video address
 
     cmp  byte [si], 0x0     ; check for null terminator
-    jne  print_str.loop     ; if there are still characters to print, continue
+    jne  print.loop         ; if there are still characters to print, continue
 
     shr  di, 1              ; di = cursor position after printing the str
     push di
-    call set_cursor         ; update cursor position
+    call cursor.set         ; update cursor position
     add  sp, 2              ; pop di
 
     pop  bp
@@ -188,10 +189,11 @@ print_str:
 
 ; data ------------------------------------------------------------------------
 
-hello_str:
+str:
+.hello:
     db "sapatinhos16", 0
 
-notfound_str:
+.notfound:
     db "boot partition not found!", 0
 
 times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
