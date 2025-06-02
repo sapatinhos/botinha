@@ -1,5 +1,5 @@
 bits 16
-org 0x7c00
+org 0x600
 
 %define STACK 0x7c00        ; set the stack to be below where we were loaded
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
@@ -12,6 +12,7 @@ org 0x7c00
 
 ; entry point -----------------------------------------------------------------
 
+origin:
 ; initialize segment registers
 xor ax, ax
 mov ds, ax
@@ -22,7 +23,15 @@ mov ss, ax
 mov sp, STACK
 mov bp, STACK
 
-; clear screen and put a blue background
+; relocate ourselves
+cld             ; string operations go forward
+mov  si, sp     ; source address
+mov  di, origin ; destination address
+mov  cx, 0x100  ; move 256 words (512 bytes)
+rep             ; repeat until cx = 0
+movsw           ; move words
+
+; clear screen and reset cursor
 call clear_scr
 
 ; print a hello message
@@ -30,22 +39,9 @@ push hello_str
 call print_str
 add  sp, 2      ; pop hello_str
 
-; string operations go forward
-cld
-
-; TODO
-
-; relocate ourselves ...
-call nl_cursor
-push reloc_str
-call print_str
-add  sp, 2      ; pop reloc_str
-
 ; load second stage from disk ...
-call nl_cursor
-push load_str
-call print_str
-add  sp, 2      ; pop load_str
+
+
 
 ; halt
 jmp $
@@ -124,7 +120,7 @@ nl_cursor:
     pop  bp
     ret
 
-; fills video memory with FILL_CHARs colored FILL_COLOR
+; fills video memory with FILL_CHARs colored FILL_COLOR and reset cursor
 clear_scr:
     push bp
     mov  bp, sp
@@ -191,16 +187,10 @@ print_str:
 ; data ------------------------------------------------------------------------
 
 hello_str:
-    db "Real mode", 0
-
-reloc_str:
-    db "Relocating", 0
-
-load_str:
-    db "Loading stage1", 0
+    db "sapatinhos16", 0
 
 notfound_str:
-    db "Boot partition not found!", 0
+    db "boot partition not found!", 0
 
 times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
 dw 0xaa55                   ; mbr magic byte
