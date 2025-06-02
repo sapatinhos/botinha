@@ -3,10 +3,11 @@ org 0x7c00
 
 %define STACK 0x7c00        ; set the stack to be below where we were loaded
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
-%define VIDEO_COL 80        ; default number of columns
-%define VIDEO_ROW 25        ; default number of rows
+%define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
+%define VIDEO_COL 80        ; 80 columns
+%define VIDEO_ROW 25        ; 25 rows
 %define FILL_CHAR 0x20      ; space ascii code
-%define FILL_COLOR 0x07     ; light gray foreground and blue background
+%define FILL_COLOR 0x17     ; light gray foreground and blue background
 %define PRINT_COLOR 0x07    ; light gray foreground and black background
 
 ; entry point -----------------------------------------------------------------
@@ -126,7 +127,6 @@ nl_cursor:
 ; fills video memory with FILL_CHARs colored FILL_COLOR
 clear_scr:
     push bp
-    push bx
     mov  bp, sp
 
     ; dx = content to write
@@ -138,26 +138,19 @@ clear_scr:
     mov  fs, ax
     xor  di, di
 
-    mov  bx, VIDEO_ROW      ; bx = number of rows to fill
-
-.row_loop:
-    mov  cx, VIDEO_COL      ; cx = number of columns to fill
-
-.col_loop:
+.loop:
     mov  [fs:di], dx        ; write to video memory
-    add  di, 2              ; go forward 2 bytes
-    loop clear_scr.col_loop ; cx--, repeat until cx is zero
 
-    add  dh, 0x10           ; chage background color
-    dec  bx
-    jnz  clear_scr.row_loop ; if more rows remain, continue
+    add  di, 2              ; go forward 2 bytes
+
+    cmp  di, VIDEO_LEN      ; if we didn't write VIDEO_LEN bytes,
+    jbe  clear_scr.loop     ;   repeat
 
     ; set cursor position to zero
     push 0x0
     call set_cursor
     add  sp, 2              ; pop 0x0
 
-    pop  bx
     pop  bp
     ret
 
