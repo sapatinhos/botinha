@@ -4,11 +4,11 @@ org 0x7c00
 %define STACK 0x7c00        ; set the stack to be below where we were loaded
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
 %define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
-%define VIDEO_COL 80        ; 80 columns
-%define VIDEO_ROW 25        ; 25 rows
-%define FILL_CHAR 0x20      ; space ascii code
-%define FILL_COLOR 0x17     ; light gray foreground and blue background
-%define PRINT_COLOR 0x07    ; light gray foreground and black background
+%define VIDEO_COL 80
+%define VIDEO_ROW 25
+%define FILL_CHAR '.'
+%define FILL_COLOR 0x04     ; light gray foreground and blue background
+%define PRINT_COLOR 0x0f    ; light gray foreground and black background
 
 ; entry point -----------------------------------------------------------------
 
