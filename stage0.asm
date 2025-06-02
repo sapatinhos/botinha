@@ -1,7 +1,8 @@
 bits 16
 org 0x600
 
-%define STACK 0x7c00        ; set the stack to be below where we were loaded
+%define LOAD 0x7c00         ; where we are loaded initially
+%define RELOC 0x600         ; relocate to this address
 %define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
 %define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
 %define VIDEO_COL 80
@@ -12,7 +13,6 @@ org 0x600
 
 ; entry point -----------------------------------------------------------------
 
-origin:
 ; initialize segment registers
 xor ax, ax
 mov ds, ax
@@ -20,24 +20,26 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, STACK
-mov bp, STACK
+mov sp, LOAD
+mov bp, LOAD
 
 ; relocate ourselves
-cld             ; string operations go forward
-mov  si, sp     ; source address
-mov  di, origin ; destination address
-mov  cx, 0x100  ; move 256 words (512 bytes)
-rep             ; repeat until cx = 0
-movsw           ; move words
+cld                         ; string operations go forward
+mov  si, sp                 ; source address
+mov  di, RELOC              ; destination address
+mov  cx, 0x100              ; move 256 words (512 bytes)
+rep                         ; repeat until cx = 0
+movsw                       ; move words
+jmp  start - LOAD + RELOC   ; jump to relocated code
 
+start:
 ; clear screen and reset cursor
 call clear_scr
 
 ; print a hello message
 push hello_str
 call print_str
-add  sp, 2      ; pop hello_str
+add  sp, 2                  ; pop hello_str
 
 ; load second stage from disk ...
 
