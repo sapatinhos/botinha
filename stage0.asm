@@ -7,8 +7,8 @@ org 0x7c00
 %define VIDEO_COL 80
 %define VIDEO_ROW 25
 %define FILL_CHAR '.'
-%define FILL_COLOR 0x04     ; light gray foreground and blue background
-%define PRINT_COLOR 0x0f    ; light gray foreground and black background
+%define FILL_COLOR 0x04     ; red on black
+%define PRINT_COLOR 0x0f    ; white on black
 
 ; entry point -----------------------------------------------------------------
 
