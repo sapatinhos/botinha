@@ -43,7 +43,10 @@ add  sp, 2                  ; pop hello_str
 
 ; load second stage from disk
 
+; scan partition table for sapatinhos boot partition ...
+;   if not found, print str.notfound and halt
 
+; load stage1 from disk and execute it
 
 ; halt
 jmp $
