@@ -1,13 +1,17 @@
-SRC := stage0.asm
-BIN := boot
+STAGE0 := stage0.asm
+OUT0 := boot
 
-$(BIN): clean
-	nasm $(SRC) -o $(BIN)
+STAGE1 := stage1.asm
+OUT1 := stage1
 
-run: $(BIN)
-	qemu-system-x86_64 -drive format=raw,file=$(BIN) &
+all: clean
+	nasm $(STAGE0) -o $(OUT0)
+	nasm $(STAGE1) -o $(OUT1)
+
+run: $(OUT0)
+	qemu-system-x86_64 -drive format=raw,file=$(OUT0) &
 
 clean:
-	rm -f $(BIN)
+	rm -f $(OUT0) $(OUT1)
 
 .PHONY: run clean

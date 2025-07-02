@@ -1,15 +1,17 @@
 bits 16
 org 0x600
 
-%define LOAD 0x7c00         ; where we are loaded initially
-%define RELOC 0x600         ; relocate to this address
-%define VIDEO_SEG 0xb800    ; video memory starts at 0xb8000
-%define VIDEO_LEN 0xfa0     ; the default mode (80x25) uses 0xfa0 bytes
+%define LOAD 0x7c00             ; where we are loaded initially
+%define RELOC 0x600             ; relocate to this address
+%define VIDEO_SEG 0xb800        ; video memory starts at 0xb8000
+%define VIDEO_LEN 0xfa0         ; the default mode (80x25) uses 0xfa0 bytes
 %define VIDEO_COL 80
 %define VIDEO_ROW 25
 %define FILL_CHAR '.'
-%define FILL_COLOR 0x04     ; red on black
-%define PRINT_COLOR 0x0f    ; white on black
+%define FILL_COLOR 0x04         ; red on black
+%define PRINT_COLOR 0x0f        ; white on black
+%define SPTS_PTYPE 0x5a         ; sapatinhos boot partition type byte
+%define PARTBL RELOC + 0x1be    ; partition table start
 
 ; entry point -----------------------------------------------------------------
 
@@ -36,20 +38,63 @@ start:
 ; clear screen and reset cursor
 call clearscr
 
-; print a hello message
-push str.hello
-call print
-add  sp, 2                  ; pop hello_str
-
 ; load second stage from disk
 
 ; scan partition table for sapatinhos boot partition ...
 ;   if not found, print str.notfound and halt
 
-; load stage1 from disk and execute it
+push dx                     ; save drive number
+mov bx, PARTBL
+xor dx, dx
 
-; halt
-jmp $
+read_entry:
+mov al, [bx + 4]        ; al = partition type
+cmp al, SPTS_PTYPE
+jnz next_entry          ; if not sapatinhos boot, skip
+jmp load_stage1
+
+next_entry:
+inc dx
+cmp dx, 4
+jge err_notfound
+add bx, 0x10
+jmp read_entry
+
+; load stage1 from disk and execute it
+load_stage1:
+pop dx                      ; dl = drive number
+mov si, bx                  ; si = selected partition entry
+mov bx, LOAD                ; bx = address to write
+mov dh, [si + 1]            ; dh = head
+mov cx, [si + 2]            ; cx = cylinder:sector
+mov al, 0x1                 ; al = sector count
+mov ah, 0x2                 ; ah = read sectors into mem function
+
+mov  di, sp
+push si
+
+int 0x13
+
+mov sp, di
+jc err_readerr
+push str.hello
+call print
+add  sp, 2                  ; pop hello_str
+
+pop si
+jmp bx
+
+jmp $                       ; halt
+
+err_notfound:
+push str.notfound
+call print
+jmp $                       ; halt
+
+err_readerr:
+push str.readerr
+call print
+jmp $                       ; halt
 
 ; functions -------------------------------------------------------------------
 
@@ -198,6 +243,9 @@ str:
 
 .notfound:
     db "boot partition not found!", 0
+
+.readerr:
+    db "failed to read from disk!", 0
 
 times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
 dw 0xaa55                   ; mbr magic byte
