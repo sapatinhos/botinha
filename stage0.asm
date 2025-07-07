@@ -25,6 +25,7 @@ mov ss, ax
 mov sp, LOAD
 mov bp, LOAD
 
+
 ; relocate ourselves
 cld                         ; string operations go forward
 mov  si, sp                 ; source address
@@ -36,14 +37,15 @@ jmp  start - LOAD + RELOC   ; jump to relocated code
 
 start:
 ; clear screen and reset cursor
-call clearscr
 
 ; load second stage from disk
 
 ; scan partition table for sapatinhos boot partition ...
 ;   if not found, print str.notfound and halt
 
+
 push dx                     ; save drive number
+call debug
 mov bx, PARTBL
 xor dx, dx
 
@@ -80,6 +82,9 @@ jc err_readerr
 push str.hello
 call print
 add  sp, 2                  ; pop hello_str
+
+push bx
+call dump
 
 pop si
 jmp bx
@@ -235,11 +240,60 @@ print:
     pop  bp
     ret
 
+dump:
+    push bp
+    mov  bp, sp
+
+    ; fs:di = address to write
+    call cursor.get         ; ax = current cursor position
+    shl  ax, 1
+    mov  di, ax             ; di = video memory offset
+
+    mov  ax, VIDEO_SEG
+    mov  fs, ax             ; fs = video memory base address (>> 4)
+
+    mov  si, [bp + 4]       ; si = string address
+    mov  dh, PRINT_COLOR    ; dh = text color
+
+    mov  cx, 0
+
+.loop:
+    mov  dl, [si]           ; dl = current character
+    mov  [fs:di], dx        ; write to video memory
+
+    inc  si                 ; go forward 1 byte on str address
+    inc  cx
+    add  di, 2              ; go forward 2 bytes on video address
+
+    cmp  cx, 0x200     ; check for null terminator
+    jne  dump.loop         ; if there are still characters to print, continue
+
+    shr  di, 1              ; di = cursor position after printing the str
+    push di
+    call cursor.set         ; update cursor position
+    add  sp, 2              ; pop di
+
+    pop  bp
+    ret
+
+
+debug:
+    push bp
+    mov  bp, sp
+    
+    lea ax, [bp + 4]
+    push ax 
+    call print    
+    pop ax
+
+    pop bp
+    ret
+
 ; data ------------------------------------------------------------------------
 
 str:
 .hello:
-    db "sapatinhos16", 0
+    db "sapatinhos16.1", 0
 
 .notfound:
     db "boot partition not found!", 0
