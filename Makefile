@@ -1,17 +1,39 @@
-STAGE0 := stage0.asm
-OUT0 := boot
+SRC			:= $(wildcard *.asm)
+BIN			:= $(SRC:.asm=.bin)
 
-STAGE1 := stage1.asm
-OUT1 := stage1
+DISK		:= disk.img
+DISKSZ	:= 1M
+BOOTSEC := stage0.bin
+PART1F	:= stage1.bin
+PART1T	:= '!0x5a'
 
-all: clean
-	nasm $(STAGE0) -o $(OUT0)
-	nasm $(STAGE1) -o $(OUT1)
+.DELETE_ON_ERROR:
 
-run: $(OUT0)
-	qemu-system-x86_64 -drive format=raw,file=$(OUT0) &
+# binaries --------------------------------------------------------------------
+
+all: $(BIN)
+
+%.bin: %.asm
+	nasm $< -o $@
+
+# emulation -------------------------------------------------------------------
+
+$(DISK): $(BIN)
+	truncate -s $(DISKSZ) $(DISK)
+	sudo sh -c '\
+		MDDEV=$$(mdconfig -a -t vnode -f $(DISK)) && \
+		trap "mdconfig -d -u $$MDDEV" EXIT && \
+		dd if=$(BOOTSEC) of=/dev/$$MDDEV bs=512 oflag=sync status=progress && \
+		gpart add -s $$(stat -f %z $(PART1F)) -t $(PART1T) /dev/$$MDDEV && \
+		dd if=$(PART1F) of=/dev/$$MDDEV"s1" bs=1M oflag=sync status=progress \
+	'
+
+run: $(BIN) $(DISK)
+	qemu-system-x86_64 -drive format=raw,file=$(DISK)
+
+# -----------------------------------------------------------------------------
 
 clean:
-	rm -f $(OUT0) $(OUT1)
+	rm -f $(BIN) $(DISK)
 
-.PHONY: run clean
+.PHONY: all run clean

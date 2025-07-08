@@ -1,3 +1,2 @@
-boot
-dump
-stage1
+*.bin
+disk.img

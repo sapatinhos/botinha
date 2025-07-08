@@ -15,6 +15,8 @@ org 0x600
 
 ; entry point -----------------------------------------------------------------
 
+;jmp 0 : LOAD + 3
+
 ; initialize segment registers
 xor ax, ax
 mov ds, ax
@@ -35,27 +37,22 @@ movsw                       ; move words
 jmp  start - LOAD + RELOC   ; jump to relocated code
 
 start:
-; clear screen and reset cursor
-call clearscr
-
-; load second stage from disk
-
-; scan partition table for sapatinhos boot partition ...
-;   if not found, print str.notfound and halt
-
 push dx                     ; save drive number
+call clearscr               ; clear screen and reset cursor
+
+; scan partition table for sapatinhos boot partition
 mov bx, PARTBL
-xor dx, dx
+xor cx, cx
 
 read_entry:
-mov al, [bx + 4]        ; al = partition type
+mov al, [bx + 4]            ; al = partition type
 cmp al, SPTS_PTYPE
-jnz next_entry          ; if not sapatinhos boot, skip
+jnz next_entry              ; if not sapatinhos boot, skip
 jmp load_stage1
 
 next_entry:
-inc dx
-cmp dx, 4
+inc cx
+cmp cx, 4
 jge err_notfound
 add bx, 0x10
 jmp read_entry
@@ -70,13 +67,11 @@ mov cx, [si + 2]            ; cx = cylinder:sector
 mov al, 0x1                 ; al = sector count
 mov ah, 0x2                 ; ah = read sectors into mem function
 
-mov  di, sp
 push si
 
 int 0x13
-
-mov sp, di
 jc err_readerr
+
 push str.hello
 call print
 add  sp, 2                  ; pop hello_str
