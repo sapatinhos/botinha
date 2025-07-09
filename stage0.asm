@@ -57,8 +57,8 @@ jmp read_entry
 
 ; load stage1 from disk and execute it
 load_stage1:
-push si                     ; si = selected partition entry
 pop dx                      ; dl = drive number
+push si                     ; si = selected partition entry
 
 ; check if we can use int 13h fn 42h
 mov ah, 0x41
@@ -67,7 +67,7 @@ mov bx, 0x55aa
 int 0x13                    ; extensions installation check
 jc  err_noext
 
-cmp bx, 0x55aa
+cmp bx, 0xaa55
 jne err_noext
 
 test cx, 1
