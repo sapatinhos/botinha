@@ -15,6 +15,7 @@ org 0x600
 
 ; entry point -----------------------------------------------------------------
 
+; TODO ensure cs is set to zero
 ;jmp 0 : LOAD + 3
 
 ; initialize segment registers
@@ -41,44 +42,69 @@ push dx                     ; save drive number
 call clearscr               ; clear screen and reset cursor
 
 ; scan partition table for sapatinhos boot partition
-mov bx, PARTBL
+mov si, PARTBL
 xor cx, cx
 
 read_entry:
-mov al, [bx + 4]            ; al = partition type
+mov al, [si + 4]            ; al = partition type
 cmp al, SPTS_PTYPE
-jnz next_entry              ; if not sapatinhos boot, skip
-jmp load_stage1
-
-next_entry:
+jz  load_stage1             ; if found, load
 inc cx
 cmp cx, 4
 jge err_notfound
-add bx, 0x10
+add si, 0x10
 jmp read_entry
 
 ; load stage1 from disk and execute it
 load_stage1:
+push si                     ; si = selected partition entry
 pop dx                      ; dl = drive number
-mov si, bx                  ; si = selected partition entry
-mov bx, LOAD                ; bx = address to write
-mov dh, [si + 1]            ; dh = head
-mov cx, [si + 2]            ; cx = cylinder:sector
-mov al, 0x1                 ; al = sector count
-mov ah, 0x2                 ; ah = read sectors into mem function
 
-push si
+; check if we can use int 13h fn 42h
+mov ah, 0x41
+mov bx, 0x55aa
 
-int 0x13
+int 0x13                    ; extensions installation check
+jc  err_noext
+
+cmp bx, 0x55aa
+jne err_noext
+
+test cx, 1
+jz  err_noext
+
+; disk address packet
+sub sp, 0x10
+mov bx, sp
+mov byte [bx], 0x10         ; size of packet
+mov byte [bx + 1], 0        ; reserved
+mov word [bx + 2], 1        ; number of blocks to transfer
+mov dword [bx + 4], LOAD    ; address to write
+
+mov cx, 2                   ; LBA
+add si, 0x8
+lea di, [bx + 8]
+rep movsw
+mov dword [bx + 12], 0
+
+mov si, sp                  ; ds:si -> disk address packet
+
+mov ah, 0x42
+int 0x13                    ; extended read
 jc err_readerr
 
+; success
 push str.hello
 call print
 add  sp, 2                  ; pop hello_str
 
 pop si
-jmp bx
+jmp bx                      ; execute stage1
+jmp $                       ; halt
 
+err_noext:
+push str.noext
+call print
 jmp $                       ; halt
 
 err_notfound:
@@ -238,6 +264,9 @@ str:
 
 .notfound:
     db "boot partition not found!", 0
+
+.noext:
+    db "bios int 13h extensions not supported!", 0
 
 .readerr:
     db "failed to read from disk!", 0
