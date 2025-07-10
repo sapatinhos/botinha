@@ -9,7 +9,8 @@ org 0x600
 %define VGA_ROW 25
 %define VGA_LENW VGA_COL * VGA_ROW
 
-%define FILL_CHAR ' '
+%define FILL_CHAR ':'
+%define FILL_COLOR 0x04             ; red on black
 %define PRINT_COLOR 0x07            ; grey on black
 
 %define PARTBL_ST RELOC + 0x1be     ; partition table start
@@ -50,7 +51,7 @@ mov cx, VGA_LENW
 mov ax, VGA_SEG
 mov es, ax
 xor di, di
-mov ax, (PRINT_COLOR << 8) | FILL_CHAR
+mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
 rep stosw                   ; fill cx words at es:di with ax
 
