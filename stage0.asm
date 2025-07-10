@@ -9,7 +9,7 @@ org 0x600
 %define VGA_ROW 25
 %define VGA_LENW VGA_COL * VGA_ROW
 
-%define FILL_CHAR ':'
+%define FILL_CHAR 0xfa              ; middle dot
 %define FILL_COLOR 0x04             ; red on black
 %define PRINT_COLOR 0x07            ; grey on black
 
