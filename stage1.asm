@@ -1,10 +1,10 @@
 bits 16
 org 0x7c00
 
-%define STACK 0x7c00            ; stack's base address
-%define PARTENTRY bp - 2        ; -> current partition mbr entry
-%define ROOTSTART bp - 6        ; first sector of the root directory
-%define DATASTART bp - 10       ; first sector of the data section
+%define STACK_BASE 0x7c00       ; stack's base address
+%define PART_ENTRY bp - 2       ; -> current partition mbr entry
+%define ROOT_START bp - 6       ; # first sector of the root directory
+%define DATA_START bp - 10      ; # first sector of the data section
 %define READBUFFER 0x8000       ; -> next stage
 
 %define VGA_SEG 0xb800          ; video memory starts at 0xb8000
@@ -54,12 +54,12 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, STACK
-mov bp, STACK
+mov sp, STACK_BASE
+mov bp, STACK_BASE
 
 ; save initial state
 mov [bs_drvnum], dl             ; save drive number
-mov [PARTENTRY], si             ; save partition entry
+mov [PART_ENTRY], si            ; save partition entry
 
 ; get fat offsets -------------------------------------------------------------
 
@@ -67,7 +67,7 @@ mov [PARTENTRY], si             ; save partition entry
 xor eax, eax
 xor ebx, ebx
 
-mov ax, [bpb_fatsz16]
+mov ax, [bpb_fatsz16]           ; ax = fatsz
 mov bl, [bpb_numfats]
 mul ebx
 
@@ -89,28 +89,46 @@ shl eax, 5
 mov bx, [bpb_bytspersec]
 div ebx
 
-add eax, [ROOTSTART]
+add eax, [ROOT_START]
 push ebx
 
 ; find loader -----------------------------------------------------------------
 
-next_sector:
 mov dl, [bs_drvnum]
-mov eax, [ROOTSTART]
+mov eax, [ROOT_START]
+
+; read sector
+next_sector:
 mov di, READBUFFER
 mov cx, 1
 call read
+
+; search for loader file name
+next_entry:
+mov cx, 11
+mov si, str.loader
+repe cmpsb
+je  found
+
+; ...
+
+found:
 
 jmp $
 
 ; functions -------------------------------------------------------------------
 
 ; lba read from active disk
+; input:
 ; dl            = drive number
 ; eax           = lba address
 ; es:di         = -> destination buffer
 ; cx            = # sectors to read
+; output:
+; eax           = eax + cx
 read:
+    push dx
+    push 
     ; disk address packet
     push dword 0x0              ; lba
     push eax                    ;  address
@@ -160,6 +178,9 @@ jmp halt
 ; data ------------------------------------------------------------------------
 
 str:
+.loader:
+    db "loader     "
+
 .readerr:
     db "disk read error", 0
 
