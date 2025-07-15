@@ -3,8 +3,9 @@ org 0x7c00
 
 %define STACK_BASE 0x7c00       ; stack's base address
 %define PART_ENTRY bp - 2       ; -> current partition mbr entry
-%define ROOT_START bp - 6       ; # first sector of the root directory
-%define DATA_START bp - 10      ; # first sector of the data section
+%define FAT_START bp - 6        ; # first sector of the fat
+%define ROOT_START bp - 10      ; # first sector of the root directory
+%define DATA_START bp - 14      ; # first sector of the data section
 %define READBUFFER 0x8000       ; -> next stage
 
 %define VGA_SEG 0xb800          ; video memory starts at 0xb8000
@@ -64,20 +65,22 @@ mov [PART_ENTRY], si            ; save partition entry
 ; get fat offsets -------------------------------------------------------------
 
 ; rootstart = rsvdseccnt + (fatsz * numfats)
-xor eax, eax
 xor ebx, ebx
+mov eax, [si + 0x8]             ; partition start lba address
 
-mov ax, [bpb_fatsz16]           ; ax = fatsz
-mov bl, [bpb_numfats]
-mul ebx
-
-xor ebx, ebx
 add bx, [bpb_rsvdseccnt]
 add eax, ebx
 
-add eax, [si + 0x8]             ; partition start lba address
+push eax                        ; save FAT_START
 
-push eax
+xor eax, eax
+xor ebx, ebx
+mov ax, [bpb_fatsz16]           ; ax = fatsz
+mov bl, [bpb_numfats]           ; ax = fatsz * numfats
+mul ebx
+add eax, [FAT_START]
+
+push eax                        ; save ROOT_START
 
 ; datastart = rootstart + (rootentcnt * 32) / bytespersec
 xor eax, eax
@@ -90,11 +93,12 @@ mov bx, [bpb_bytspersec]
 div ebx
 
 add eax, [ROOT_START]
-push ebx
+push ebx                        ; save DATA_START
 
 ; find loader -----------------------------------------------------------------
 
 mov eax, [ROOT_START]
+xor bx, bx ; bx = # current entry
 
 ; read sector
 next_sector:
@@ -105,14 +109,30 @@ call read
 
 ; search for loader file name
 next_entry:
+inc bx
+cmp bx, [bpb_rootentcnt]
+jg err_notfound
+
 mov cx, 11
 mov si, str.loader
 repe cmpsb
 je  found
 
+add di, 0x15
+
+mov cx, READBUFFER
+add cx, [bpb_bytspersec]
+cmp di, cx 
+jge next_sector
+
+jmp next_entry
 ; ...
 
 found:
+mov dl, [bs_drvnum]
+mov ax, [di + 0x1a]
+mov di, READBUFFER  
+call loadfile
 
 jmp $
 
@@ -169,7 +189,24 @@ no_carry:
     pop bx
     ret
 
+; input:
+; dl            = drive number
+; ax            = cluster number
+; es:di         = -> destination buffer
+loadfile:
+    mov cx, [bpb_secperclus]
+    mul cx
+    shl ecx, 16
+    add eax, ecx
+    add eax, [DATA_START]
+    
+    
+
 ; errors ----------------------------------------------------------------------
+
+err_notfound:
+mov si, str.notfound
+jmp printerr
 
 err_readerr:
 mov si, str.readerr
@@ -206,6 +243,9 @@ str:
 
 .readerr:
     db "disk read error", 0
+
+.notfound:
+    db "loader not found", 0
 
 times 510 - ($ - $$) db 0
 dw 0xaa55
