@@ -1,146 +1,167 @@
 bits 16
 org 0x7c00
 
-%define STACK 0x7c00
-%define VIDEO 0xb8000
-%define BLUE  0x11          ; blue foreground and blue background
-%define LGBL  0x07          ; light gray foreground and black background
-%define SCREEN_LEN 0x7d0
+%define STACK 0x7c00            ; stack's base address
+%define PARTENTRY bp - 2        ; -> current partition mbr entry
+%define ROOTSTART bp - 6        ; first sector of the root directory
+%define DATASTART bp - 10       ; first sector of the data section
+%define READBUFFER 0x8000       ; -> next stage
 
-; string operations go forward
-cld
+%define VGA_SEG 0xb800          ; video memory starts at 0xb8000
+%define VGA_COL 80
+%define VGA_ROW 25
+%define VGA_LENW VGA_COL * VGA_ROW
+%define PRINT_COLOR 0x07        ; grey on black
+
+; bpb header ------------------------------------------------------------------
+
+bs_jmpboot:     jmp short entry
+                nop
+bs_oemname:     dq 0            ; oem string
+
+; bios parameter block --------------------------------------------------------
+
+bpb_bytspersec: dw 0            ; # bytes per sector
+bpb_secperclus: db 0            ; # sectors per cluster
+bpb_rsvdseccnt: dw 0            ; # reserved sectors
+bpb_numfats:    db 0            ; # fats
+bpb_rootentcnt: dw 0            ; # entries in the root directory
+bpb_totsec16:   dw 0            ; size of the volume in sectors (if =< 65535)
+bpb_media:      db 0            ; media descriptor
+bpb_fatsz16:    dw 0            ; size of a fat in sectors
+bpb_secpertrk:  dw 0            ; # sectors per track
+bpb_numheads:   dw 0            ; # heads
+bpb_hiddsec:    dd 0            ; # hidden sectors
+bpb_totsec32:   dd 0            ; size of the volume in sectors (if > 65535)
+
+; extended boot record --------------------------------------------------------
+
+bs_drvnum:      db 0            ; drive number
+bs_reserved1:   db 0            ; reserved
+bs_bootsig:     db 0x29         ; extended boot signature
+bs_volid:       dd 0            ; volume serial number
+bs_vollab:      times 11 db 0   ; volume label string
+bs_filsystype:  db "FAT16   "   ; file system type string
+
+; entry point -----------------------------------------------------------------
+
+entry:
 
 ; initialize segment registers
 xor ax, ax
-mov es, ax
 mov ds, ax
+mov es, ax
 mov ss, ax
 
 ; set stack pointers
 mov sp, STACK
 mov bp, STACK
 
-; enable protected mode
+; save initial state
+mov [bs_drvnum], dl             ; save drive number
+mov [PARTENTRY], si             ; save partition entry
 
-; disable maskable interrupts
-cli
+; get fat offsets -------------------------------------------------------------
 
-; disable non maskable interrupts
-in al, 0x70
-or al, 0x80
-out 0x70, al
-in al, 0x71
+; rootstart = rsvdseccnt + (fatsz * numfats)
+xor eax, eax
+xor ebx, ebx
 
-; enable A20
-in al, 0x92     ; this may cause problems for very old systems
-or al, 2
-out 0x92, al
+mov ax, [bpb_fatsz16]
+mov bl, [bpb_numfats]
+mul ebx
 
-; load gdt
-lgdt [gdtr]
+xor ebx, ebx
+add bx, [bpb_rsvdseccnt]
+add eax, ebx
 
-; set PE bit
-smsw ax
-or   ax, 1
-lmsw ax
+add eax, [si + 0x8]             ; partition start lba address
 
-; clear pipeline and set cs register
-jmp  gdt.cs - gdt : pmode
+push eax
 
-bits 32
+; datastart = rootstart + (rootentcnt * 32) / bytespersec
+xor eax, eax
+xor ebx, ebx
 
-; set remaining segment registers
-pmode:
-mov  ax, gdt.ds - gdt
-mov  ds, ax
-mov  ss, ax
-mov  es, ax
-mov  fs, ax
-mov  gs, ax
+mov ax, [bpb_rootentcnt]
+shl eax, 5
 
-push BLUE
-call clear_screen
+mov bx, [bpb_bytspersec]
+div ebx
 
-push hello
-call print32
+add eax, [ROOTSTART]
+push ebx
 
-; halt
+; find loader -----------------------------------------------------------------
+
+next_sector:
+mov dl, [bs_drvnum]
+mov eax, [ROOTSTART]
+mov di, READBUFFER
+mov cx, 1
+call read
+
 jmp $
 
-; functions
+; functions -------------------------------------------------------------------
 
-; print a string in protected mode
-print32:
-    push ebp
-    mov  ebp, esp
+; lba read from active disk
+; dl            = drive number
+; eax           = lba address
+; es:di         = -> destination buffer
+; cx            = # sectors to read
+read:
+    ; disk address packet
+    push dword 0x0              ; lba
+    push eax                    ;  address
+    push di                     ; -> destination
+    push es                     ;  buffer
+    push cx                     ; # blocks to read
+    push word 0x10              ; packet size
 
-    mov  esi, [ebp + 8]     ; read string address into eax
-    mov  edi, VIDEO         ; write video address to edi
+    mov si, sp                  ; ds:si -> packet
 
-.loop:
-    mov  dl, [esi]          ; set di to the current character
-    mov  dh, LGBL           ; print with dos colors
-    mov  [edi], dx          ; write to video memory
+    mov ah, 0x42
+    int 0x13
+    jc  err_readerr
 
-    inc  esi
-    add  edi, 2
-
-    cmp  byte [esi], 0      ; check for null terminator
-    jne  print32.loop       ; if there are still characters to print, continue
-
-    pop ebp
+    add sp, 0x10
     ret
 
-clear_screen:
-    push ebp
-    mov  ebp, esp
+; errors ----------------------------------------------------------------------
 
-    mov  dl, 0x20           ; empty space to fill the screen
-    mov  dh, [ebp + 8]      ; read color to fill screen
+err_readerr:
+mov si, str.readerr
 
-    mov  edi, VIDEO         ; load video memory adress
+; print the error message string in ds:si and halt
+printerr:
+xor di, di
+mov ax, VGA_SEG
+mov es, ax
+mov ah, PRINT_COLOR
 
-    mov  eax, SCREEN_LEN*2  ; load length of screen to fill, 2 bytes per cell
+; es:di = video memory
+; ds:si = error message
+; al = current char
+; ah = color attribute
 
-    mov  ecx, 0
+write_char:
+lodsb                           ; al = [ds:si], si += 1
+or  al, al                      ; on null terminator,
+jz  halt                        ;  halt
+stosw                           ; [es:di] = ax, di += 2
+jmp write_char
 
-.loop:
-    mov [edi + ecx], dx     ; write to video memory
+halt:
+cli                             ; disable interrupts
+hlt
+jmp halt
 
-    add ecx, 2
+; data ------------------------------------------------------------------------
 
-    cmp ecx, eax            ; check if wrote to the whole screen
-    jbe clear_screen.loop
-
-    pop ebp
-    ret
-
-; data
-hello:
-    db "sapatinhos v0.32", 0
-
-; GDT
-gdtr:
-    dw gdtend - gdt ; gdt size
-    dd gdt          ; gdt offset
-gdt:
-.null:
-    dq 0
-.cs:
-    dw 0xffff       ; limit [15:0]
-    dw 0x0000       ; base [15:0]
-    db 0x00         ; base [23:16]
-    db 0b10011011   ; access byte
-    db 0b01001111   ; flags [3:0] limit [51:48]
-    db 0x00         ; base [63:56]
-.ds:
-    dw 0xffff       ; limit [15:0]
-    dw 0x0000       ; base [15:0]
-    db 0x00         ; base [23:16]
-    db 0b10010011   ; access byte
-    db 0b01001111   ; flags [3:0] limit [51:48]
-    db 0x00         ; base [63:56]
-gdtend:
+str:
+.readerr:
+    db "disk read error", 0
 
 times 510 - ($ - $$) db 0
 dw 0xaa55
