@@ -194,11 +194,20 @@ no_carry:
 ; ax            = cluster number
 ; es:di         = -> destination buffer
 loadfile:
+    push ax
+    xor ecx, ecx
     mov cx, [bpb_secperclus]
-    mul cx
-    shl ecx, 16
-    add eax, ecx
+    mul ecx
     add eax, [DATA_START]
+    call read
+
+    mov eax, [FAT_START]
+    xor ecx, ecx
+
+    pop cx
+    shl cx, 4
+    add eax, ecx
+    
     
     
 
