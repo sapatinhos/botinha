@@ -94,11 +94,11 @@ push ebx
 
 ; find loader -----------------------------------------------------------------
 
-mov dl, [bs_drvnum]
 mov eax, [ROOT_START]
 
 ; read sector
 next_sector:
+mov dl, [bs_drvnum]
 mov di, READBUFFER
 mov cx, 1
 call read
@@ -127,13 +127,13 @@ jmp $
 ; output:
 ; eax           = eax + cx
 read:
-    push dx
-    push 
+    push bx
+    push eax
     ; disk address packet
     push dword 0x0              ; lba
     push eax                    ;  address
-    push di                     ; -> destination
     push es                     ;  buffer
+    push di                     ; -> destination
     push cx                     ; # blocks to read
     push word 0x10              ; packet size
 
@@ -144,6 +144,29 @@ read:
     jc  err_readerr
 
     add sp, 0x10
+
+    mov ax, [bpb_bytspersec] 
+    mul cx 
+    
+    add di, ax
+    jnc no_carry
+    
+    mov bx, es
+    add bx, (1<<12)
+    mov es, bx
+
+no_carry:
+    mov bx, es
+    shl dx, 12
+    add bx, dx
+    mov es, bx
+
+    pop eax
+
+    and ecx, 0x0000ffff
+    add eax, ecx                
+
+    pop bx
     ret
 
 ; errors ----------------------------------------------------------------------
