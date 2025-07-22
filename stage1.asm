@@ -98,7 +98,7 @@ push ebx                        ; save DATA_START
 ; find loader -----------------------------------------------------------------
 
 mov eax, [ROOT_START]
-xor bx, bx ; bx = # current entry
+xor bx, bx                      ; bx = # current entry
 
 ; read sector
 next_sector:
@@ -122,16 +122,15 @@ add di, 0x15
 
 mov cx, READBUFFER
 add cx, [bpb_bytspersec]
-cmp di, cx 
+cmp di, cx
 jge next_sector
 
 jmp next_entry
-; ...
 
 found:
 mov dl, [bs_drvnum]
 mov ax, [di + 0x1a]
-mov di, READBUFFER  
+mov di, READBUFFER
 call loadfile
 
 jmp $
@@ -149,6 +148,7 @@ jmp $
 read:
     push bx
     push eax
+
     ; disk address packet
     push dword 0x0              ; lba
     push eax                    ;  address
@@ -165,12 +165,12 @@ read:
 
     add sp, 0x10
 
-    mov ax, [bpb_bytspersec] 
-    mul cx 
-    
+    mov ax, [bpb_bytspersec]
+    mul cx
+
     add di, ax
     jnc no_carry
-    
+
     mov bx, es
     add bx, (1<<12)
     mov es, bx
@@ -184,7 +184,7 @@ no_carry:
     pop eax
 
     and ecx, 0x0000ffff
-    add eax, ecx                
+    add eax, ecx
 
     pop bx
     ret
@@ -207,9 +207,8 @@ loadfile:
     pop cx
     shl cx, 4
     add eax, ecx
-    
-    
-    
+
+    ; TODO ...
 
 ; errors ----------------------------------------------------------------------
 
