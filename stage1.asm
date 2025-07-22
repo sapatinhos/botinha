@@ -85,6 +85,7 @@ movzx eax, word [bpb_fatsz16]       ; eax = fatsz
 movzx ecx, byte [bpb_numfats]       ; ecx = numfats
 
 mul ecx                             ; eax = fatsz * numfats
+                                    ; && edx = 0
 add ebx, eax                        ; ebx = rootstart
 
 mov [ROOT_START], ebx               ; save rootstart
@@ -95,6 +96,7 @@ movzx ecx, word [bpb_bytspersec]    ; ecx = bytespersec
 
 shl eax, 5                          ; eax = (rootentcnt * 32)
 div ecx                             ; eax = (rootentcnt * 32) / bytespersec
+                                    ; && edx = 0
 add ebx, eax                        ; ebx = datastart
 
 mov [DATA_START], ebx               ; save datastart
