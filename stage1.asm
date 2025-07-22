@@ -1,18 +1,26 @@
 bits 16
 org 0x7c00
 
-%define STACK_BASE 0x7c00       ; stack's base address
-%define PART_ENTRY bp - 2       ; -> current partition mbr entry
-%define FAT_START bp - 6        ; # first sector of the fat
-%define ROOT_START bp - 10      ; # first sector of the root directory
-%define DATA_START bp - 14      ; # first sector of the data section
-%define READBUFFER 0x8000       ; -> next stage
+; memory layout ---------------------------------------------------------------
 
-%define VGA_SEG 0xb800          ; video memory starts at 0xb8000
-%define VGA_COL 80
-%define VGA_ROW 25
-%define VGA_LENW VGA_COL * VGA_ROW
-%define PRINT_COLOR 0x07        ; grey on black
+%define STACK 0x7c00            ; stack's base address      - 0x800  .. 0x7bff
+%define STATIC 0x7e00           ; static variables          - 0x7e00 .. 0x7fff
+%define READ_BUFFER 0x8000      ; next stage load location  - 0x8000 .. 0x7ffff
+
+; globals ---------------------------------------------------------------------
+
+%define PART_ENTRY STATIC       ; -> current partition mbr entry        (word)
+%define FAT_START STATIC + 2    ; # first sector of the fat             (dword)
+%define ROOT_START STATIC + 6   ; # first sector of the root directory  (dword)
+%define DATA_START STATIC + 10  ; # first sector of the data section    (dword)
+
+; video -----------------------------------------------------------------------
+
+%define VGA_SEG 0xb800              ; hardware mapped memory
+%define VGA_COL 80                  ; # columns
+%define VGA_ROW 25                  ; # rows
+%define VGA_LENW VGA_COL * VGA_ROW  ; length in words
+%define PRINT_COLOR 0x07            ; grey on black
 
 ; bpb header ------------------------------------------------------------------
 
@@ -55,45 +63,41 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, STACK_BASE
 mov bp, STACK_BASE
+mov sp, bp
 
 ; save initial state
 mov [bs_drvnum], dl             ; save drive number
-mov [PART_ENTRY], si            ; save partition entry
+mov [PART_ENTRY], si            ; save -> mbr partition entry
 
 ; get fat offsets -------------------------------------------------------------
 
-; rootstart = rsvdseccnt + (fatsz * numfats)
-xor ebx, ebx
-mov eax, [si + 0x8]             ; partition start lba address
+; fatstart = partstart + rsvdseccnt
+mov ebx, [si + 0x8]                 ; ebx = partition start LBA
+movzx eax, word [bpb_rsvdseccnt]    ; eax = # reserved sectors
 
-add bx, [bpb_rsvdseccnt]
-add eax, ebx
+add ebx, eax                        ; ebx = fatstart
 
-push eax                        ; save FAT_START
+mov [FAT_START], ebx                ; save fatstart
 
-xor eax, eax
-xor ebx, ebx
-mov ax, [bpb_fatsz16]           ; ax = fatsz
-mov bl, [bpb_numfats]           ; ax = fatsz * numfats
-mul ebx
-add eax, [FAT_START]
+; rootstart = fatstart + (fatsz * numfats)
+movzx eax, word [bpb_fatsz16]       ; eax = fatsz
+movzx ecx, byte [bpb_numfats]       ; ecx = numfats
 
-push eax                        ; save ROOT_START
+mul ecx                             ; eax = fatsz * numfats
+add ebx, eax                        ; ebx = rootstart
+
+mov [ROOT_START], ebx               ; save rootstart
 
 ; datastart = rootstart + (rootentcnt * 32) / bytespersec
-xor eax, eax
-xor ebx, ebx
+movzx eax, word [bpb_rootentcnt]    ; eax = rootentcnt
+movzx ecx, word [bpb_bytspersec]    ; ecx = bytespersec
 
-mov ax, [bpb_rootentcnt]
-shl eax, 5
+shl eax, 5                          ; eax = (rootentcnt * 32)
+div ecx                             ; eax = (rootentcnt * 32) / bytespersec
+add ebx, eax                        ; ebx = datastart
 
-mov bx, [bpb_bytspersec]
-div ebx
-
-add eax, [ROOT_START]
-push ebx                        ; save DATA_START
+mov [DATA_START], ebx               ; save datastart
 
 ; find loader -----------------------------------------------------------------
 
