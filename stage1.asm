@@ -101,56 +101,64 @@ add ebx, eax                        ; ebx = datastart
 
 mov [DATA_START], ebx               ; save datastart
 
-; find loader -----------------------------------------------------------------
+; find next stage -------------------------------------------------------------
 
-mov eax, [ROOT_START]
+mov eax, [ROOT_START]           ; eax = rootstart
+dec eax                         ; eax = rootstart - 1
 xor bx, bx                      ; bx = # current entry
 
-; read sector
+; root directory walk
 next_sector:
-mov dl, [bs_drvnum]
-mov di, READBUFFER
-mov cx, 1
+inc eax                         ; eax = lba address
+mov di, READ_BUFFER             ; write sector to READ_BUFFER
+mov cx, 1                       ; read 1 sector
 call read
 
-; search for loader file name
+; search sector for the next stage's entry
 next_entry:
-inc bx
-cmp bx, [bpb_rootentcnt]
-jg err_notfound
 
-mov cx, 11
-mov si, str.loader
-repe cmpsb
-je  found
+; check current entry
+mov cx, 11                      ; cx = # bytes for a filename
+mov si, str.nextstg             ; si -> next stage's filename
+repe cmpsb                      ; if [di], [si] filenames are equal,
+je  found                       ;  file found
 
-add di, 0x15
+; prepare for next iteration
+inc bx                          ; bx++
+cmp bx, [bpb_rootentcnt]        ; if bx >= bpb_rootentcnt,
+jge err_notfound                ;  file not found
 
-mov cx, READBUFFER
-add cx, [bpb_bytspersec]
-cmp di, cx
-jge next_sector
+add di, 0x15                    ; di -> next entry
+
+; advance sector ?
+mov cx, READ_BUFFER             ; cx = READ_BUFFER
+add cx, [bpb_bytspersec]        ; cx = READ_BUFFER + bytespersec
+cmp di, cx                      ; if di is out of bounds,
+jge next_sector                 ;  load next sector
 
 jmp next_entry
 
+; load next stage -------------------------------------------------------------
+
 found:
-mov dl, [bs_drvnum]
-mov ax, [di + 0x1a]
-mov di, READBUFFER
+mov ax, [di + 0xf]              ; ax = first cluster
+mov di, READ_BUFFER             ; write next stage to READ_BUFFER
 call loadfile
 
-jmp $
+jmp 0:READ_BUFFER               ; execute next stage
 
 ; functions -------------------------------------------------------------------
 
-; lba read from active disk
+; lba read from active disk ---------------------------------------------------
+
 ; input:
-; dl            = drive number
 ; eax           = lba address
 ; es:di         = -> destination buffer
 ; cx            = # sectors to read
+
 ; output:
 ; eax           = eax + cx
+
 read:
     push bx
     push eax
@@ -158,12 +166,13 @@ read:
     ; disk address packet
     push dword 0x0              ; lba
     push eax                    ;  address
-    push es                     ;  buffer
-    push di                     ; -> destination
+    push es                     ; -> destination
+    push di                     ;  buffer
     push cx                     ; # blocks to read
     push word 0x10              ; packet size
 
     mov si, sp                  ; ds:si -> packet
+    mov dl, [bs_drvnum]         ; dl = drive number
 
     mov ah, 0x42
     int 0x13
@@ -196,7 +205,6 @@ no_carry:
     ret
 
 ; input:
-; dl            = drive number
 ; ax            = cluster number
 ; es:di         = -> destination buffer
 loadfile:
@@ -252,7 +260,7 @@ jmp halt
 ; data ------------------------------------------------------------------------
 
 str:
-.loader:
+.nextstg:
     db "loader     "
 
 .readerr:
