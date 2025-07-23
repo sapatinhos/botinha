@@ -157,13 +157,14 @@ jmp 0:READ_BUFFER               ; execute next stage
 ; cx            = # sectors to read
 
 ; output:
-; eax           = eax + cx
+; eax           += cx
+; es:di         += cx * bpb_bytspersec
 
 read:
-    push bx
-    push eax
+    push bp
+    mov bp, sp
 
-    ; disk address packet
+    ; build disk address packet
     push dword 0x0              ; lba
     push eax                    ;  address
     push es                     ; -> destination
@@ -171,37 +172,39 @@ read:
     push cx                     ; # blocks to read
     push word 0x10              ; packet size
 
+    ; set parameters
     mov si, sp                  ; ds:si -> packet
     mov dl, [bs_drvnum]         ; dl = drive number
 
-    mov ah, 0x42
-    int 0x13
-    jc  err_readerr
+    ; read from disk
+    mov ah, 0x42                ; extended
+    int 0x13                    ;  read
+    jc  err_readerr             ; die on error
 
-    add sp, 0x10
+    ; es:di += cx * bpb_bytspersec
+    mov ax, [bpb_bytspersec]    ; ax = bytespersec
+    mul cx                      ; dx:ax = cx * bytespersec
 
-    mov ax, [bpb_bytspersec]
-    mul cx
+    shl dx, 12                  ; make dx bit-aligned as a segment register
+    mov cx, es                  ; cx = es
+    add cx, dx                  ; cx += dx
 
-    add di, ax
-    jnc no_carry
+    add di, ax                  ; di += ax
+    jnc .no_carry
 
-    mov bx, es
-    add bx, (1<<12)
-    mov es, bx
+    add ch, 0x10                ; cx += (1<<12)
 
-no_carry:
-    mov bx, es
-    shl dx, 12
-    add bx, dx
-    mov es, bx
+.no_carry:
+    mov es, cx                  ; es += dx + carry
 
-    pop eax
+    ; eax += cx
+    mov eax, [bp - 8]           ; restore eax = lba address
+    movzx ecx, word [bp - 14]   ; ecx = cx
+    add eax, ecx                ; eax += cx
 
-    and ecx, 0x0000ffff
-    add eax, ecx
+    add sp, 0x10                ; free packet
 
-    pop bx
+    pop bp
     ret
 
 ; input:
