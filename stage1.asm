@@ -115,7 +115,7 @@ push di                         ; save di
 mov cx, 1                       ; read 1 sector
 call readsectors                ; eax++
 
-pop di                          ; restore di
+mov di, [bp - 2]                ; restore di
 pop es                          ; restore es
 
 ; search sector for the next stage's entry
@@ -132,7 +132,8 @@ inc bx                          ; bx++
 cmp bx, [bpb_rootentcnt]        ; if bx >= bpb_rootentcnt,
 jge err_notfound                ;  file not found
 
-add di, 0x15                    ; di -> next entry
+pop di                          ; restore di
+add di, 0x20                    ; di -> next entry
 
 ; advance sector ?
 mov cx, READ_BUFFER             ; cx = READ_BUFFER
@@ -145,7 +146,8 @@ jmp next_entry
 ; load next stage -------------------------------------------------------------
 
 found:
-mov ax, [di + 0xf]              ; ax = first cluster
+pop di                          ; restore di
+mov ax, [di + 0x1a]             ; ax = first cluster
 mov di, READ_BUFFER             ; write next stage to READ_BUFFER
 call readclusters
 
