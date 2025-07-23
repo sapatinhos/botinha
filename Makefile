@@ -2,10 +2,13 @@ SRC			:= $(wildcard *.asm)
 BIN			:= $(SRC:.asm=.bin)
 
 DISK		:= disk.img
-DISKSZ	:= 1M
+DISKSZ	:= 64M
 BOOTSEC := stage0.bin
-PART1F	:= stage1.bin
-PART1T	:= '!0x5a'
+
+PARTNUM := "s1"
+PARTSZ	:= 32M
+PARTTYP	:= '!0x5a'
+PARTSEC	:= stage1.bin
 
 .DELETE_ON_ERROR:
 
@@ -24,8 +27,11 @@ $(DISK): $(BIN)
 		MDDEV=$$(mdconfig -a -t vnode -f $(DISK)) && \
 		trap "mdconfig -d -u $$MDDEV" EXIT && \
 		dd if=$(BOOTSEC) of=/dev/$$MDDEV bs=512 oflag=sync status=progress && \
-		gpart add -s $$(stat -f %z $(PART1F)) -t $(PART1T) /dev/$$MDDEV && \
-		dd if=$(PART1F) of=/dev/$$MDDEV"s1" bs=1M oflag=sync status=progress \
+		gpart add -s $(PARTSZ) -t $(PARTTYP) /dev/$$MDDEV && \
+		newfs_msdos -B ./$(PARTSEC) -F 16 $$MDDEV$(PARTNUM) && \
+		mount -t msdosfs /dev/$$MDDEV$(PARTNUM) /mnt && \
+		cp loader.bin /mnt/loader && \
+		umount /mnt \
 	'
 
 run: $(BIN) $(DISK)

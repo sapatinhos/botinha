@@ -26,7 +26,7 @@ org 0x7c00
 
 bs_jmpboot:     jmp short entry
                 nop
-bs_oemname:     dq 0            ; oem string
+bs_oemname:     db "SPTSBOOT"   ; oem string
 
 ; bios parameter block --------------------------------------------------------
 
@@ -104,15 +104,19 @@ mov [DATA_START], ebx               ; save datastart
 ; find next stage -------------------------------------------------------------
 
 mov eax, [ROOT_START]           ; eax = rootstart
-dec eax                         ; eax = rootstart - 1
 xor bx, bx                      ; bx = # current entry
+mov di, READ_BUFFER             ; write sector to READ_BUFFER
 
 ; root directory walk
 next_sector:
-inc eax                         ; eax = lba address
-mov di, READ_BUFFER             ; write sector to READ_BUFFER
+push es                         ; save es
+push di                         ; save di
+
 mov cx, 1                       ; read 1 sector
-call readsectors
+call readsectors                ; eax++
+
+pop di                          ; restore di
+pop es                          ; restore es
 
 ; search sector for the next stage's entry
 next_entry:
@@ -120,7 +124,7 @@ next_entry:
 ; check current entry
 mov cx, 11                      ; cx = # bytes for a filename
 mov si, str.nextstg             ; si -> next stage's filename
-repe cmpsb                      ; if [di], [si] filenames are equal,
+repe cmpsb                      ; if [es:di], [ds:si] filenames are equal,
 je  found                       ;  file found
 
 ; prepare for next iteration
@@ -300,7 +304,7 @@ jmp halt
 
 str:
 .nextstg:
-    db "loader     "
+    db "LOADER     "
 
 .readerr:
     db "disk read error", 0
