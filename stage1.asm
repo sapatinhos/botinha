@@ -63,7 +63,7 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov bp, STACK_BASE
+mov bp, STACK
 mov sp, bp
 
 ; save initial state
