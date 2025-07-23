@@ -112,7 +112,7 @@ next_sector:
 inc eax                         ; eax = lba address
 mov di, READ_BUFFER             ; write sector to READ_BUFFER
 mov cx, 1                       ; read 1 sector
-call read
+call readsectors
 
 ; search sector for the next stage's entry
 next_entry:
@@ -143,7 +143,7 @@ jmp next_entry
 found:
 mov ax, [di + 0xf]              ; ax = first cluster
 mov di, READ_BUFFER             ; write next stage to READ_BUFFER
-call loadfile
+call readclusters
 
 jmp 0:READ_BUFFER               ; execute next stage
 
@@ -160,7 +160,7 @@ jmp 0:READ_BUFFER               ; execute next stage
 ; eax           += cx
 ; es:di         += cx * bpb_bytspersec
 
-read:
+readsectors:
     push bp
     mov bp, sp
 
@@ -207,25 +207,61 @@ read:
     pop bp
     ret
 
+; read a cluster chain into memory --------------------------------------------
+
 ; input:
-; ax            = cluster number
+; ax            = first cluster number
 ; es:di         = -> destination buffer
-loadfile:
-    push ax
-    xor ecx, ecx
-    mov cx, [bpb_secperclus]
-    mul ecx
-    add eax, [DATA_START]
-    call read
 
-    mov eax, [FAT_START]
-    xor ecx, ecx
+readclusters:
+    push bp
+    mov bp, sp
 
-    pop cx
-    shl cx, 4
-    add eax, ecx
+    push bx
+    push ax                     ; save current cluster #
+    push es                     ; save initial es value
+    push di                     ; save initial di value
 
-    ; TODO ...
+    ; get next cluster #
+    mov cx, [bpb_bytspersec]    ; cx = # bytes per sector
+    shr cx, 1                   ; cx = # FAT16 entries per sector
+
+    xor dx, dx                  ; dx = 0
+    div cx                      ; ax = FAT sector #
+    mov bx, dx                  ; bx = entry offset in FAT sector
+
+    movzx eax, ax               ; zero eax high bits
+    add eax, [FAT_START]        ; eax = lba address of wanted FAT sector
+    mov cx, 1                   ; cx = 1 sector
+    call readsectors            ; read FAT sector into es:di
+
+    pop di                      ; restore di
+    pop es                      ; restore es
+
+    ; read current cluster
+    shl bx, 1                   ; bx = entry offset in bytes
+    mov bx, [es:di + bx]        ; bx = next cluster #
+
+    pop ax                              ; ax = current cluster #
+    sub ax, 2                           ; ax -= 2
+    movzx eax, ax                       ; zero eax high bits
+    movzx ecx, byte [bpb_secperclus]    ; ecx = sectors per cluster
+    mul ecx                             ; eax *= ecx
+    add eax, [DATA_START]               ; eax = lba address of cluster
+    call readsectors
+
+    ; read next cluster
+    mov ax, bx                  ; ax = next cluster #
+    cmp ax, 0xfff8              ; cluster # >= 0xfff8 is eof
+    jge .eof
+
+    call readclusters           ; if not eof, follow cluster chain
+
+.eof:
+
+    pop bx
+    pop bp
+    ret
 
 ; errors ----------------------------------------------------------------------
 
