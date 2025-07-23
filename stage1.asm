@@ -103,6 +103,7 @@ mov [DATA_START], ebx               ; save datastart
 
 ; find next stage -------------------------------------------------------------
 
+cld                             ; string ops go forward
 mov eax, [ROOT_START]           ; eax = rootstart
 xor bx, bx                      ; bx = # current entry
 mov di, READ_BUFFER             ; write sector to READ_BUFFER
@@ -115,24 +116,25 @@ push di                         ; save di
 mov cx, 1                       ; read 1 sector
 call readsectors                ; eax++
 
-mov di, [bp - 2]                ; restore di
+pop di                          ; restore di
 pop es                          ; restore es
 
 ; search sector for the next stage's entry
 next_entry:
+push di                         ; save di
 
 ; check current entry
 mov cx, 11                      ; cx = # bytes for a filename
 mov si, str.nextstg             ; si -> next stage's filename
-repe cmpsb                      ; if [es:di], [ds:si] filenames are equal,
-je  found                       ;  file found
+repe cmpsb                      ; check if [es:di], [ds:si] filenames are equal
+pop di                          ; restore di
+je  found
 
 ; prepare for next iteration
 inc bx                          ; bx++
 cmp bx, [bpb_rootentcnt]        ; if bx >= bpb_rootentcnt,
 jge err_notfound                ;  file not found
 
-pop di                          ; restore di
 add di, 0x20                    ; di -> next entry
 
 ; advance sector ?
@@ -146,12 +148,11 @@ jmp next_entry
 ; load next stage -------------------------------------------------------------
 
 found:
-pop di                          ; restore di
 mov ax, [di + 0x1a]             ; ax = first cluster
 mov di, READ_BUFFER             ; write next stage to READ_BUFFER
 call readclusters
 
-jmp 0:READ_BUFFER               ; execute next stage
+jmp 0x0000:READ_BUFFER          ; execute next stage
 
 ; functions -------------------------------------------------------------------
 
@@ -244,10 +245,10 @@ readclusters:
     pop di                      ; restore di
     pop es                      ; restore es
 
-    ; read current cluster
     shl bx, 1                   ; bx = entry offset in bytes
     mov bx, [es:di + bx]        ; bx = next cluster #
 
+    ; read current cluster
     pop ax                              ; ax = current cluster #
     sub ax, 2                           ; ax -= 2
     movzx eax, ax                       ; zero eax high bits
