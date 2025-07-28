@@ -1,146 +1,164 @@
 bits 16
-org 0x7c00
+org 0x600
 
-%define STACK 0x7c00
-%define VIDEO 0xb8000
-%define BLUE  0x11          ; blue foreground and blue background
-%define LGBL  0x07          ; light gray foreground and black background
-%define SCREEN_LEN 0x7d0
+%define LOAD 0x7c00                 ; where we are loaded initially
+%define RELOC 0x600                 ; relocate to this address
 
-; string operations go forward
-cld
+%define VGA_SEG 0xb800              ; video memory starts at 0xb8000
+%define VGA_COL 80
+%define VGA_ROW 25
+%define VGA_LENW VGA_COL * VGA_ROW
+
+%define FILL_CHAR 0xfa              ; middle dot
+%define FILL_COLOR 0x04             ; red on black
+%define PRINT_COLOR 0x07            ; grey on black
+
+%define PARTBL_ST RELOC + 0x1be     ; partition table start
+%define PARTBL_END PARTBL_ST + 0x40 ; partition table end
+%define SPTSBOOT_PTYPE 0x5a         ; sapatinhos boot partition type
+
+; entry point -----------------------------------------------------------------
 
 ; initialize segment registers
 xor ax, ax
-mov es, ax
 mov ds, ax
+mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, STACK
-mov bp, STACK
+mov sp, LOAD
+mov bp, LOAD
 
-; enable protected mode
+; relocate ourselves
+cld                         ; string operations go forward
+mov si, sp                  ; source address
+mov di, RELOC               ; destination address
+mov cx, 0x100               ; move 256 words (512 bytes)
+rep movsw                   ; move words until cx = 0
+jmp start - LOAD + RELOC    ; jump to relocated code
 
-; disable maskable interrupts
-cli
+start:
 
-; disable non maskable interrupts
-in al, 0x70
-or al, 0x80
-out 0x70, al
-in al, 0x71
+; clear screen ----------------------------------------------------------------
 
-; enable A20
-in al, 0x92     ; this may cause problems for very old systems
-or al, 2
-out 0x92, al
+; disable cursor
+mov ch, 0x3f
+mov ah, 0x01
+int 0x10
 
-; load gdt
-lgdt [gdtr]
+; clear video memory
+mov cx, VGA_LENW
+mov ax, VGA_SEG
+mov es, ax
+xor di, di
+mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
-; set PE bit
-smsw ax
-or   ax, 1
-lmsw ax
+rep stosw                   ; fill cx words at es:di with ax
 
-; clear pipeline and set cs register
-jmp  gdt.cs - gdt : pmode
+; scan partition table --------------------------------------------------------
 
-bits 32
+; si = first partition table entry
+mov si, PARTBL_ST
 
-; set remaining segment registers
-pmode:
-mov  ax, gdt.ds - gdt
-mov  ds, ax
-mov  ss, ax
-mov  es, ax
-mov  fs, ax
-mov  gs, ax
+; check if the current entry is our boot partition
+read_entry:
+mov al, [si + 4]            ; al = partition type
+cmp al, SPTSBOOT_PTYPE
+je  load
 
-push BLUE
-call clear_screen
+; go to the next entry or die if not found
+next_entry:
+add si, 0x10
+cmp si, PARTBL_END
+jge err_notfound
+jmp read_entry
 
-push hello
-call print32
+; load next stage -------------------------------------------------------------
 
-; halt
-jmp $
+load:
 
-; functions
+; disk access extensions installation check
+mov ah, 0x41
+mov bx, 0x55aa
 
-; print a string in protected mode
-print32:
-    push ebp
-    mov  ebp, esp
+int 0x13
+jc  err_noext               ; check failed
 
-    mov  esi, [ebp + 8]     ; read string address into eax
-    mov  edi, VIDEO         ; write video address to edi
+cmp bx, 0xaa55
+jne err_noext               ; extensions are not installed
 
-.loop:
-    mov  dl, [esi]          ; set di to the current character
-    mov  dh, LGBL           ; print with dos colors
-    mov  [edi], dx          ; write to video memory
+test cx, 1
+jz  err_noext               ; function 42h is not supported
 
-    inc  esi
-    add  edi, 2
+; build disk address packet
+push si                     ; save si -> selected partition entry
 
-    cmp  byte [esi], 0      ; check for null terminator
-    jne  print32.loop       ; if there are still characters to print, continue
+push dword 0x0              ; lba
+push dword [si + 0x8]       ;  address
+push dword LOAD             ; read buffer address
+push word 0x1               ; number of blocks to read
+push word 0x10              ; packet size
 
-    pop ebp
-    ret
+mov si, sp                  ; ds:si -> packet
 
-clear_screen:
-    push ebp
-    mov  ebp, esp
+; disk access extensions extended read
+mov ah, 0x42
+int 0x13
+jc err_readerr              ; read failed
 
-    mov  dl, 0x20           ; empty space to fill the screen
-    mov  dh, [ebp + 8]      ; read color to fill screen
+add sp, 0x10                ; free packet
+pop si                      ; restore si -> selected partition entry
 
-    mov  edi, VIDEO         ; load video memory adress
+; execute next stage
+jmp bp                      ; absolute jump to bp = LOAD
 
-    mov  eax, SCREEN_LEN*2  ; load length of screen to fill, 2 bytes per cell
+; errors ----------------------------------------------------------------------
 
-    mov  ecx, 0
+err_noext:
+mov si, str.noext
+jmp printerr
 
-.loop:
-    mov [edi + ecx], dx     ; write to video memory
+err_notfound:
+mov si, str.notfound
+jmp printerr
 
-    add ecx, 2
+err_readerr:
+mov si, str.readerr
 
-    cmp ecx, eax            ; check if wrote to the whole screen
-    jbe clear_screen.loop
+; print the error message string in si and halt
+; note: we assume es = VGA_SEG and ds = 0
+printerr:
+xor di, di
+mov ah, PRINT_COLOR
 
-    pop ebp
-    ret
+; es:di = video memory
+; ds:si = error message
+; al = current char
+; ah = color attribute
 
-; data
-hello:
-    db "sapatinhos v0.32", 0
+write_char:
+lodsb                   ; al = [ds:si], si += 1
+or  al, al              ; on null terminator,
+jz  halt                ;  halt
+stosw                   ; [es:di] = ax, di += 2
+jmp write_char
 
-; GDT
-gdtr:
-    dw gdtend - gdt ; gdt size
-    dd gdt          ; gdt offset
-gdt:
-.null:
-    dq 0
-.cs:
-    dw 0xffff       ; limit [15:0]
-    dw 0x0000       ; base [15:0]
-    db 0x00         ; base [23:16]
-    db 0b10011011   ; access byte
-    db 0b01001111   ; flags [3:0] limit [51:48]
-    db 0x00         ; base [63:56]
-.ds:
-    dw 0xffff       ; limit [15:0]
-    dw 0x0000       ; base [15:0]
-    db 0x00         ; base [23:16]
-    db 0b10010011   ; access byte
-    db 0b01001111   ; flags [3:0] limit [51:48]
-    db 0x00         ; base [63:56]
-gdtend:
+halt:
+cli                     ; disable interrupts
+hlt
+jmp halt
 
-times 510 - ($ - $$) db 0
-dw 0xaa55
+; data ------------------------------------------------------------------------
+
+str:
+.notfound:
+    db "boot partition not found", 0
+
+.noext:
+    db "lba read unavailable", 0
+
+.readerr:
+    db "disk read error", 0
+
+times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
+dw 0xaa55                   ; mbr magic byte
