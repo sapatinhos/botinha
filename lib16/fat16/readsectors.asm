@@ -7,18 +7,14 @@
 ; eax           = lba address
 ; es:di         = -> destination buffer
 ; cx            = # sectors to read
-; dl            = drive number
 
 ; output:
 ; eax           += cx
 ; es:di         += cx * bpb_bytspersec
-; dl            = drive number
 
 readsectors:
     push bp
     mov bp, sp
-
-    push dx                     ; save drive number
 
     ; build disk address packet
     push dword 0x0              ; lba
@@ -30,6 +26,7 @@ readsectors:
 
     ; set parameters
     mov si, sp                  ; ds:si -> packet
+    mov dl, [bs_drvnum]         ; dl = drive number
 
     ; read from disk
     mov ah, 0x42                ; extended
@@ -53,12 +50,11 @@ readsectors:
     mov es, cx                  ; es += dx + carry
 
     ; eax += cx
-    mov eax, [bp - 10]          ; restore eax = lba address
-    movzx ecx, word [bp - 16]   ; ecx = cx
+    mov eax, [bp - 8]           ; restore eax = lba address
+    movzx ecx, word [bp - 14]   ; ecx = cx
     add eax, ecx                ; eax += cx
 
     add sp, 0x10                ; free packet
-    pop dx                      ; restore drive number
 
     pop bp
     ret
