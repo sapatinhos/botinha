@@ -1,16 +1,9 @@
 bits 16
 org 0x8000
 
-%define STACK 0x8000                ; where we are loaded initially
+%include "lib16/defs.asm"
 
-%define VGA_SEG 0xb800              ; video memory starts at 0xb8000
-%define VGA_COL 80
-%define VGA_ROW 25
-%define VGA_LENW VGA_COL * VGA_ROW
-
-%define FILL_CHAR 0xfa              ; middle dot
 %define FILL_COLOR 0x01             ; blue on black
-%define PRINT_COLOR 0x07            ; grey on black
 
 ; entry point -----------------------------------------------------------------
 

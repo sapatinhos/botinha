@@ -22,8 +22,8 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, STACK
 mov bp, STACK
+mov sp, bp
 
 ; relocate ourselves
 cld                         ; string operations go forward
