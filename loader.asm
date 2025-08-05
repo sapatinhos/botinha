@@ -43,7 +43,48 @@ mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
 rep stosw                   ; fill cx words at es:di with ax
 
+; enter protected mode ------------------------------------------------------
 
+; disable maskable interrupts
+cli
+
+; disable non maskable interrupts
+in al, 0x70
+or al, 0x80
+out 0x70, al
+in al, 0x71
+
+; enable A20
+in al, 0x92     ; this may cause problems for very old systems
+or al, 2
+out 0x92, al
+
+; load gdt
+lgdt [gdtr]
+
+; set PE bit
+smsw ax
+or   ax, 1
+lmsw ax
+
+; clear pipeline and set cs register
+jmp  gdt.cs - gdt : pmode
+
+bits 32
+
+; set remaining segment registers
+pmode:
+mov  ax, gdt.ds - gdt
+mov  ds, ax
+mov  ss, ax
+mov  es, ax
+mov  fs, ax
+mov  gs, ax
+
+mov si, str.hello
+jmp printerr
+
+jmp halt
 ; check long mode support -----------------------------------------------------
 
 pushfd
@@ -77,9 +118,8 @@ test edx, CPUID_LONG_MODE_FLAG
 jz err_nolongmode
 
 
-mov si, str.hello
-
-; errors -----------------------------------------------------------------
+; 16 bits functions -------------------------------------------------------------------
+bits 16
 
 err_nocpuid:
 mov si, str.nocpuid
@@ -113,6 +153,9 @@ jz  halt                ;  halt
 stosw                   ; [es:di] = ax, di += 2
 jmp write_char
 
+; 32 bits functions -------------------------------------------------------------------
+bits 32 
+
 halt:
 cli                     ; disable interrupts
 hlt
@@ -133,7 +176,26 @@ str:
 .nolongmode:
     db "long mode not available", 0
 
+; GDT
+gdtr:
+    dw gdtend - gdt ; gdt size
+    dd gdt          ; gdt offset
+gdt:
+.null:
+    dq 0
+.cs:
+    dw 0xffff       ; limit [15:0]
+    dw 0x0000       ; base [15:0]
+    db 0x00         ; base [23:16]
+    db 0b10011011   ; access byte
+    db 0b01001111   ; flags [3:0] limit [51:48]
+    db 0x00         ; base [63:56]
+.ds:
+    dw 0xffff       ; limit [15:0]
+    dw 0x0000       ; base [15:0]
+    db 0x00         ; base [23:16]
+    db 0b10010011   ; access byte
+    db 0b01001111   ; flags [3:0] limit [51:48]
+    db 0x00         ; base [63:56]
+gdtend:
 
-
-times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
-dw 0xaa55                   ; mbr magic byte
