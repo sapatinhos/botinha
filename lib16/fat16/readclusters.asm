@@ -1,6 +1,8 @@
 %ifndef READCLUSTERS_ASM
 %define READCLUSTERS_ASM
 
+%include "lib16/fat16/readsectors.asm"
+
 ; read a cluster chain into memory --------------------------------------------
 
 ; input:

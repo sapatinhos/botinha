@@ -2,10 +2,11 @@
 %define DEFS_ASM
 
 ; memory layout ---------------------------------------------------------------
-
-%define STACK 0x7c00            ; stack's base address      - 0x800  .. 0x7bff
-%define STATIC 0x7e00           ; static variables          - 0x7e00 .. 0x7fff
-%define READ_BUFFER 0x8000      ; next stage load location  - 0x8000 .. 0x7ffff
+                                ;                  (KiB sz) - range
+%define STACK 0x7c00            ; stack's base addr    (29) - 0x800  .. 0x7bff
+%define STATIC 0x7e00           ; static variables     (.5) - 0x7e00 .. 0x7fff
+%define LOADER 0x8000           ; loader read buffer   (10) - 0x8000 .. 0xa7ff
+%define KERNEL 0xa800           ; kernel read buffer  (470) - 0xa800 .. 0x7ffff
 
 ; globals ---------------------------------------------------------------------
 
