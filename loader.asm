@@ -2,6 +2,7 @@ bits 16
 org 0x8000
 
 %include "lib16/defs.asm"
+%include "lib16/bpb.asm"
 
 %define FILL_COLOR 0x01             ; blue on black
 
@@ -17,6 +18,8 @@ mov ss, ax
 mov bp, STACK
 mov sp, bp
 
+; clear screen ----------------------------------------------------------------
+
 ; disable cursor
 mov ch, 0x3f
 mov ah, 0x01
@@ -30,6 +33,8 @@ xor di, di
 mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
 rep stosw                   ; fill cx words at es:di with ax
+
+
 
 mov si, str.hello
 
@@ -63,5 +68,6 @@ str:
 .hello:
     db "hello cruel world", 0
 
-times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
-dw 0xaa55                   ; mbr magic byte
+; -----------------------------------------------------------------------------
+
+jmp $

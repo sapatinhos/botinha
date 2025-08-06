@@ -119,29 +119,9 @@ jmp printerr
 
 err_readerr:
 mov si, str.readerr
+jmp printerr
 
-; print the error message string in si and halt
-; note: we assume es = VGA_SEG and ds = 0
-printerr:
-xor di, di
-mov ah, PRINT_COLOR
-
-; es:di = video memory
-; ds:si = error message
-; al = current char
-; ah = color attribute
-
-write_char:
-lodsb                   ; al = [ds:si], si += 1
-or  al, al              ; on null terminator,
-jz  halt                ;  halt
-stosw                   ; [es:di] = ax, di += 2
-jmp write_char
-
-halt:
-cli                     ; disable interrupts
-hlt
-jmp halt
+%include "lib16/printerr.asm"
 
 ; data ------------------------------------------------------------------------
 

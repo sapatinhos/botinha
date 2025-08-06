@@ -23,4 +23,6 @@
 %define PRINT_COLOR 0x07            ; grey on black
 %define FILL_CHAR 0xfa              ; middle dot
 
+;------------------------------------------------------------------------------
+
 %endif
