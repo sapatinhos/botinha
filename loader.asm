@@ -37,6 +37,9 @@ mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
 rep stosw                       ; fill cx words at es:di with ax
 
+xor ax, ax
+mov es, ax                      ; reset es
+
 ; find kernel -----------------------------------------------------------------
 
 mov eax, [ROOT_START]           ; eax = rootstart
