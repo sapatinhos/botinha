@@ -87,7 +87,7 @@ mov [DATA_START], ebx               ; save datastart
 cld                             ; string ops go forward
 mov eax, [ROOT_START]           ; eax = rootstart
 xor bx, bx                      ; bx = # current entry
-mov di, READ_BUFFER             ; write sector to READ_BUFFER
+mov di, LOADER                  ; write sector to LOADER
 
 ; root directory walk
 next_sector:
@@ -119,8 +119,8 @@ jge err_notfound                ;  file not found
 add di, 0x20                    ; di -> next entry
 
 ; advance sector ?
-mov cx, READ_BUFFER             ; cx = READ_BUFFER
-add cx, [bpb_bytspersec]        ; cx = READ_BUFFER + bytespersec
+mov cx, LOADER                  ; cx = LOADER
+add cx, [bpb_bytspersec]        ; cx = LOADER + bytespersec
 cmp di, cx                      ; if di is out of bounds,
 jge next_sector                 ;  load next sector
 
@@ -130,11 +130,11 @@ jmp next_entry
 
 found:
 mov ax, [di + 0x1a]             ; ax = first cluster
-mov di, READ_BUFFER             ; write next stage to READ_BUFFER
+mov di, LOADER                  ; write next stage to LOADER
 
 call readclusters
 
-jmp 0x0000:READ_BUFFER          ; execute next stage
+jmp 0x0000:LOADER               ; execute next stage
 
 ; functions -------------------------------------------------------------------
 
@@ -157,13 +157,13 @@ jmp printerr
 
 str:
 .nextstg:
-    db "LOADER     "
+    db "LOADER  SYS"
 
 .readerr:
     db "disk read error", 0
 
 .notfound:
-    db "loader not found", 0
+    db "loader.sys not found", 0
 
 times 510 - ($ - $$) db 0
 dw 0xaa55

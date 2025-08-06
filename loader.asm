@@ -4,7 +4,7 @@ org 0x8000
 %include "lib16/defs.asm"
 %include "lib16/bpb.asm"
 
-%define FILL_COLOR 0x01             ; blue on black
+%define FILL_COLOR 0x01         ; blue on black
 
 ; entry point -----------------------------------------------------------------
 
@@ -25,6 +25,9 @@ mov ch, 0x3f
 mov ah, 0x01
 int 0x10
 
+; string ops go forward
+cld
+
 ; clear video memory
 mov cx, VGA_LENW
 mov ax, VGA_SEG
@@ -32,41 +35,89 @@ mov es, ax
 xor di, di
 mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
-rep stosw                   ; fill cx words at es:di with ax
+rep stosw                       ; fill cx words at es:di with ax
 
+; find kernel -----------------------------------------------------------------
 
+mov eax, [ROOT_START]           ; eax = rootstart
+xor bx, bx                      ; bx = # current entry
+mov di, KERNEL                  ; write sector to KERNEL
 
-mov si, str.hello
+; root directory walk
+next_sector:
+push es                         ; save es
+push di                         ; save di
 
-; print the error message string in si and halt
-printerr:
-xor di, di
-mov ax, VGA_SEG
-mov es, ax
-mov ah, PRINT_COLOR
+mov cx, 1                       ; read 1 sector
+call readsectors                ; eax++
 
-; es:di = video memory
-; ds:si = error message
-; al = current char
-; ah = color attribute
+pop di                          ; restore di
+pop es                          ; restore es
 
-write_char:
-lodsb                   ; al = [ds:si], si += 1
-or  al, al              ; on null terminator,
-jz  halt                ;  halt
-stosw                   ; [es:di] = ax, di += 2
-jmp write_char
+; search sector for the next stage's entry
+next_entry:
+push di                         ; save di
 
-halt:
-cli                     ; disable interrupts
-hlt
-jmp halt
+; check current entry
+mov cx, 11                      ; cx = # bytes for a filename
+mov si, str.nextstg             ; si -> next stage's filename
+repe cmpsb                      ; check if [es:di], [ds:si] filenames are equal
+pop di                          ; restore di
+je  found
+
+; prepare for next iteration
+inc bx                          ; bx++
+cmp bx, [bpb_rootentcnt]        ; if bx >= bpb_rootentcnt,
+jge err_notfound                ;  file not found
+
+add di, 0x20                    ; di -> next entry
+
+; advance sector ?
+mov cx, KERNEL                  ; cx = KERNEL
+add cx, [bpb_bytspersec]        ; cx = KERNEL + bytespersec
+cmp di, cx                      ; if di is out of bounds,
+jge next_sector                 ;  load next sector
+
+jmp next_entry
+
+; load next stage -------------------------------------------------------------
+
+found:
+mov ax, [di + 0x1a]             ; ax = first cluster
+mov di, KERNEL                  ; write next stage to KERNEL
+
+call readclusters
+
+jmp 0x0000:KERNEL               ; execute kernel
+
+; functions -------------------------------------------------------------------
+
+%include "lib16/fat16/readsectors.asm"
+%include "lib16/fat16/readclusters.asm"
+
+; errors ----------------------------------------------------------------------
+
+err_notfound:
+mov si, str.notfound
+jmp printerr
+
+err_readerr:
+mov si, str.readerr
+jmp printerr
+
+%include "lib16/printerr.asm"
 
 ; data ------------------------------------------------------------------------
 
 str:
-.hello:
-    db "hello cruel world", 0
+.nextstg:
+    db "KERNEL  SYS"
+
+.readerr:
+    db "disk read error", 0
+
+.notfound:
+    db "kernel.sys not found", 0
 
 ; -----------------------------------------------------------------------------
 
