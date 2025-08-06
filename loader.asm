@@ -1,16 +1,10 @@
 bits 16
 org 0x8000
 
-%define STACK 0x8000                ; where we are loaded initially
+%include "lib16/defs.asm"
+%include "lib16/bpb.asm"
 
-%define VGA_SEG 0xb800              ; video memory starts at 0xb8000
-%define VGA_COL 80
-%define VGA_ROW 25
-%define VGA_LENW VGA_COL * VGA_ROW
-
-%define FILL_CHAR 0xfa              ; middle dot
-%define FILL_COLOR 0x01             ; blue on black
-%define PRINT_COLOR 0x07            ; grey on black
+%define FILL_COLOR 0x01         ; blue on black
 
 ; entry point -----------------------------------------------------------------
 
@@ -24,10 +18,15 @@ mov ss, ax
 mov bp, STACK
 mov sp, bp
 
+; clear screen ----------------------------------------------------------------
+
 ; disable cursor
 mov ch, 0x3f
 mov ah, 0x01
 int 0x10
+
+; string ops go forward
+cld
 
 ; clear video memory
 mov cx, VGA_LENW
@@ -36,39 +35,93 @@ mov es, ax
 xor di, di
 mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
-rep stosw                   ; fill cx words at es:di with ax
+rep stosw                       ; fill cx words at es:di with ax
 
-mov si, str.hello
+xor ax, ax
+mov es, ax                      ; reset es
 
-; print the error message string in si and halt
-printerr:
-xor di, di
-mov ax, VGA_SEG
-mov es, ax
-mov ah, PRINT_COLOR
+; find kernel -----------------------------------------------------------------
 
-; es:di = video memory
-; ds:si = error message
-; al = current char
-; ah = color attribute
+mov eax, [ROOT_START]           ; eax = rootstart
+xor bx, bx                      ; bx = # current entry
+mov di, KERNEL                  ; write sector to KERNEL
 
-write_char:
-lodsb                   ; al = [ds:si], si += 1
-or  al, al              ; on null terminator,
-jz  halt                ;  halt
-stosw                   ; [es:di] = ax, di += 2
-jmp write_char
+; root directory walk
+next_sector:
+push es                         ; save es
+push di                         ; save di
 
-halt:
-cli                     ; disable interrupts
-hlt
-jmp halt
+mov cx, 1                       ; read 1 sector
+call readsectors                ; eax++
+
+pop di                          ; restore di
+pop es                          ; restore es
+
+; search sector for the next stage's entry
+next_entry:
+push di                         ; save di
+
+; check current entry
+mov cx, 11                      ; cx = # bytes for a filename
+mov si, str.nextstg             ; si -> next stage's filename
+repe cmpsb                      ; check if [es:di], [ds:si] filenames are equal
+pop di                          ; restore di
+je  found
+
+; prepare for next iteration
+inc bx                          ; bx++
+cmp bx, [bpb_rootentcnt]        ; if bx >= bpb_rootentcnt,
+jge err_notfound                ;  file not found
+
+add di, 0x20                    ; di -> next entry
+
+; advance sector ?
+mov cx, KERNEL                  ; cx = KERNEL
+add cx, [bpb_bytspersec]        ; cx = KERNEL + bytespersec
+cmp di, cx                      ; if di is out of bounds,
+jge next_sector                 ;  load next sector
+
+jmp next_entry
+
+; load next stage -------------------------------------------------------------
+
+found:
+mov ax, [di + 0x1a]             ; ax = first cluster
+mov di, KERNEL                  ; write next stage to KERNEL
+
+call readclusters
+
+jmp 0x0000:KERNEL               ; execute kernel
+
+; functions -------------------------------------------------------------------
+
+%include "lib16/fat16/readsectors.asm"
+%include "lib16/fat16/readclusters.asm"
+
+; errors ----------------------------------------------------------------------
+
+err_notfound:
+mov si, str.notfound
+jmp printerr
+
+err_readerr:
+mov si, str.readerr
+jmp printerr
+
+%include "lib16/printerr.asm"
 
 ; data ------------------------------------------------------------------------
 
 str:
-.hello:
-    db "hello cruel world", 0
+.nextstg:
+    db "KERNEL  SYS"
 
-times 510 - ($ - $$) db 0   ; fill remaining bytes with zeroes
-dw 0xaa55                   ; mbr magic byte
+.readerr:
+    db "disk read error", 0
+
+.notfound:
+    db "kernel.sys not found", 0
+
+; -----------------------------------------------------------------------------
+
+jmp $

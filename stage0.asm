@@ -1,17 +1,13 @@
 bits 16
 org 0x600
 
+%include "lib16/defs.asm"
+
 %define LOAD 0x7c00                 ; where we are loaded initially
 %define RELOC 0x600                 ; relocate to this address
+%define START start                 ; absolute address for the label start
 
-%define VGA_SEG 0xb800              ; video memory starts at 0xb8000
-%define VGA_COL 80
-%define VGA_ROW 25
-%define VGA_LENW VGA_COL * VGA_ROW
-
-%define FILL_CHAR 0xfa              ; middle dot
 %define FILL_COLOR 0x04             ; red on black
-%define PRINT_COLOR 0x07            ; grey on black
 
 %define PARTBL_ST RELOC + 0x1be     ; partition table start
 %define PARTBL_END PARTBL_ST + 0x40 ; partition table end
@@ -26,8 +22,8 @@ mov es, ax
 mov ss, ax
 
 ; set stack pointers
-mov sp, LOAD
-mov bp, LOAD
+mov bp, STACK
+mov sp, bp
 
 ; relocate ourselves
 cld                         ; string operations go forward
@@ -35,7 +31,7 @@ mov si, sp                  ; source address
 mov di, RELOC               ; destination address
 mov cx, 0x100               ; move 256 words (512 bytes)
 rep movsw                   ; move words until cx = 0
-jmp start - LOAD + RELOC    ; jump to relocated code
+jmp 0x0000:START            ; jump to relocated code
 
 start:
 
@@ -109,8 +105,7 @@ jc err_readerr              ; read failed
 add sp, 0x10                ; free packet
 pop si                      ; restore si -> selected partition entry
 
-; execute next stage
-jmp bp                      ; absolute jump to bp = LOAD
+jmp 0x0000:LOAD             ; execute next stage
 
 ; errors ----------------------------------------------------------------------
 
@@ -124,29 +119,9 @@ jmp printerr
 
 err_readerr:
 mov si, str.readerr
+jmp printerr
 
-; print the error message string in si and halt
-; note: we assume es = VGA_SEG and ds = 0
-printerr:
-xor di, di
-mov ah, PRINT_COLOR
-
-; es:di = video memory
-; ds:si = error message
-; al = current char
-; ah = color attribute
-
-write_char:
-lodsb                   ; al = [ds:si], si += 1
-or  al, al              ; on null terminator,
-jz  halt                ;  halt
-stosw                   ; [es:di] = ax, di += 2
-jmp write_char
-
-halt:
-cli                     ; disable interrupts
-hlt
-jmp halt
+%include "lib16/printerr.asm"
 
 ; data ------------------------------------------------------------------------
 

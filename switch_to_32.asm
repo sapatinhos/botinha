@@ -1,5 +1,5 @@
 bits 16
-org 0x8000
+org 0xa800
 
 %define STACK 0x7c00
 %define VIDEO 0xb8000
