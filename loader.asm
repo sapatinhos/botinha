@@ -4,6 +4,7 @@ org 0x8000
 %define STACK 0x8000                ; where we are loaded initially
 
 %define VGA_SEG 0xb800              ; video memory starts at 0xb8000
+%define VGA_MEM 0xb8000              ; video memory starts at 0xb8000
 %define VGA_COL 80
 %define VGA_ROW 25
 %define VGA_LENW VGA_COL * VGA_ROW
@@ -81,10 +82,10 @@ mov  es, ax
 mov  fs, ax
 mov  gs, ax
 
-mov si, str.hello
-jmp printerr
+push str.hello
+call print32
+pop eax
 
-jmp halt
 ; check long mode support -----------------------------------------------------
 
 pushfd
@@ -117,22 +118,17 @@ cpuid                       ; query extended processor info
 test edx, CPUID_LONG_MODE_FLAG
 jz err_nolongmode
 
+push FILL_CHAR
+call clear_screen
+
+push str.cpuid
+call print32
+
+jmp halt
+
 
 ; 16 bits functions -------------------------------------------------------------------
 bits 16
-
-err_nocpuid:
-mov si, str.nocpuid
-jmp printerr
-
-err_nocpuidext:
-mov si, str.nocpuidext
-jmp printerr
-
-err_nolongmode:
-mov si, str.nolongmode
-jmp printerr
-
 
 ; print the error message string in si and halt
 printerr:
@@ -156,6 +152,68 @@ jmp write_char
 ; 32 bits functions -------------------------------------------------------------------
 bits 32 
 
+; print a string in protected mode
+print32:
+    push ebp
+    mov  ebp, esp
+
+    mov  esi, [ebp + 8]     ; read string address into eax
+    mov  edi, VGA_MEM       ; write video address to edi
+
+.loop:
+    mov  dl, [esi]          ; set di to the current character
+    mov  dh, PRINT_COLOR           ; print with dos colors
+    mov  [edi], dx          ; write to video memory
+
+    inc  esi
+    add  edi, 2
+
+    cmp  byte [esi], 0      ; check for null terminator
+    jne  print32.loop       ; if there are still characters to print, continue
+
+    pop ebp
+    ret
+
+clear_screen:
+    push ebp
+    mov  ebp, esp
+
+    mov  dl, FILL_COLOR           ; empty space to fill the screen
+    mov  dh, [ebp + 8]      ; read color to fill screen
+
+    mov  edi, VGA_MEM         ; load video memory adress
+
+    mov  eax, VGA_LENW*2  ; load length of screen to fill, 2 bytes per cell
+
+    mov  ecx, 0
+
+.loop:
+    mov [edi + ecx], dx     ; write to video memory
+
+    add ecx, 2
+
+    cmp ecx, eax            ; check if wrote to the whole screen
+    jbe clear_screen.loop
+
+    pop ebp
+    ret
+
+err_nocpuid:
+push str.nocpuid
+call print32
+jmp halt
+
+err_nocpuidext:
+push str.nocpuidext
+call print32
+jmp halt
+
+err_nolongmode:
+push str.nolongmode
+call print32
+jmp halt
+
+
 halt:
 cli                     ; disable interrupts
 hlt
@@ -166,6 +224,9 @@ jmp halt
 str:
 .hello:
     db "hello cruel world", 0
+
+.cpuid:
+    db "cpuid present", 0
 
 .nocpuid:
     db "cpuid isnt available", 0
