@@ -30,8 +30,7 @@ $(DISK): $(BIN)
 		gpart add -s $(PARTSZ) -t $(PARTTYP) /dev/$$MDDEV && \
 		newfs_msdos -B ./$(PARTSEC) -F 16 $$MDDEV$(PARTNUM) && \
 		mount -t msdosfs /dev/$$MDDEV$(PARTNUM) /mnt && \
-		cp loader.bin /mnt/loader.sys && \
-		cp switch_to_32.bin /mnt/kernel.sys && \
+		cp loader.bin /mnt/loader && \
 		umount /mnt \
 	'
 
