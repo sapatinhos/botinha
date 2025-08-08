@@ -18,6 +18,44 @@ org 0x8000
 %define CPUID_EXT_FEATURES 0x80000001
 %define CPUID_LONG_MODE_FLAG 0x20000000 
 
+%define PML4T_ADDR 0x1000
+%define PDPT_ADDR 0x2000
+%define PDT_ADDR 0x3000
+%define PT_ADDR 0x4000
+
+%define PT_SZ 4096
+%define PT_ADDR_MASK 0xffffffffff000 
+%define PT_PRESENT 1
+%define PT_READABLE 2
+%define PT_HUGEPAGE 1 << 7 
+
+%define PAE_ENABLE 1 << 5
+
+%define EFER_MSR 0xC0000080
+%define EFER_LM_ENABLE 1 << 8
+
+%define CR0_PM_ENABLE 1 << 0
+%define CR0_PG_ENABLE 1 << 31
+
+; Access bits
+%define PRESENT   1 << 7
+%define NOT_SYS   1 << 4
+%define EXEC      1 << 3
+%define DC        1 << 2
+%define RW        1 << 1
+%define ACCESSED  1 << 0
+
+; Flags bits
+%define GRAN_4K   1 << 7
+%define SZ_32     1 << 6
+%define LONG_MODE 1 << 5
+
+%define VGA_TEXT_BUFFER_ADDR  0xb8000
+%define COLS  80
+%define ROWS  25
+%define BYTES_PER_CHARACTER  2
+%define VGA_TEXT_BUFFER_SIZE  BYTES_PER_CHARACTER * COLS * ROWS
+
 ; entry point -----------------------------------------------------------------
 
 ; initialize segment registers
@@ -61,7 +99,7 @@ or al, 2
 out 0x92, al
 
 ; load gdt
-lgdt [gdtr]
+lgdt [gdtr32]
 
 ; set PE bit
 smsw ax
@@ -69,13 +107,13 @@ or   ax, 1
 lmsw ax
 
 ; clear pipeline and set cs register
-jmp  gdt.cs - gdt : pmode
+jmp  gdt32.cs - gdt32 : pmode
 
 bits 32
 
 ; set remaining segment registers
 pmode:
-mov  ax, gdt.ds - gdt
+mov  ax, gdt32.ds - gdt32
 mov  ds, ax
 mov  ss, ax
 mov  es, ax
@@ -122,6 +160,66 @@ push FILL_CHAR
 call clear_screen
 
 push str.cpuid
+call print32
+
+; setup paging ------------------------------------------------------------------------
+
+mov edi, PML4T_ADDR
+mov cr3, edi                
+
+xor eax, eax
+mov ecx, PT_SZ
+rep stosd
+
+mov edi, cr3
+
+; setup page tables
+mov DWORD [edi], PDPT_ADDR & PT_ADDR_MASK | PT_PRESENT | PT_READABLE
+
+mov edi, PDPT_ADDR
+mov DWORD [edi], PDT_ADDR & PT_ADDR_MASK | PT_PRESENT | PT_READABLE 
+
+mov edi, PDT_ADDR
+mov DWORD [edi], 0 & PT_ADDR_MASK | PT_PRESENT | PT_READABLE | PT_HUGEPAGE
+
+; enable PAE
+mov eax, cr4
+or eax, PAE_ENABLE
+mov cr4, eax
+
+; enable long mode 
+mov ecx, EFER_MSR
+rdmsr
+or eax, EFER_LM_ENABLE
+wrmsr
+
+; enable paging
+mov eax, cr0
+or eax, CR0_PG_ENABLE | CR0_PM_ENABLE   
+
+mov cr0, eax
+
+lgdt [GDT.Pointer]
+jmp GDT.Code:Realm64
+
+bits 64
+Realm64:
+cli   
+; before even switching from real mode
+mov ax, GDT.Data
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov ss, ax
+
+mov rdi, VGA_TEXT_BUFFER_ADDR
+mov rax, (FILL_COLOR << 8) | FILL_CHAR
+mov rcx, VGA_TEXT_BUFFER_SIZE / 8
+rep stosq
+hlt
+
+push DWORD str.hello
 call print32
 
 jmp halt
@@ -237,11 +335,11 @@ str:
 .nolongmode:
     db "long mode not available", 0
 
-; GDT
-gdtr:
-    dw gdtend - gdt ; gdt size
-    dd gdt          ; gdt offset
-gdt:
+; GDT32
+gdtr32:
+    dw gdtend32 - gdt32 ; gdt size
+    dd gdt32          ; gdt offset
+gdt32:
 .null:
     dq 0
 .cs:
@@ -258,5 +356,25 @@ gdt:
     db 0b10010011   ; access byte
     db 0b01001111   ; flags [3:0] limit [51:48]
     db 0x00         ; base [63:56]
-gdtend:
+gdtend32:
 
+GDT:
+    .Null: equ $ - GDT
+        dq 0
+    .Code: equ $ - GDT
+        .Code.limit_lo: dw 0xffff
+        .Code.base_lo: dw 0
+        .Code.base_mid: db 0
+        .Code.access: db PRESENT | NOT_SYS | EXEC | RW
+        .Code.flags: db GRAN_4K | LONG_MODE | 0xF   ; Flags & Limit (high, bits 16-19)
+        .Code.base_hi: db 0
+    .Data: equ $ - GDT
+        .Data.limit_lo: dw 0xffff
+        .Data.base_lo: dw 0
+        .Data.base_mid: db 0
+        .Data.access: db PRESENT | NOT_SYS | RW
+        .Data.Flags: db GRAN_4K | SZ_32 | 0xF       ; Flags & Limit (high, bits 16-19)
+        .Data.base_hi: db 0
+    .Pointer:
+        dw $ - GDT - 1
+        dq GDT
