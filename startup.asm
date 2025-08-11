@@ -1,5 +1,4 @@
 bits 16
-org 0x8000
 
 %define STACK 0x8000                ; where we are loaded initially
 
@@ -56,7 +55,13 @@ org 0x8000
 %define BYTES_PER_CHARACTER  2
 %define VGA_TEXT_BUFFER_SIZE  BYTES_PER_CHARACTER * COLS * ROWS
 
+
+extern kmain
+
 ; entry point -----------------------------------------------------------------
+
+global startup_entry
+startup_entry:
 
 ; initialize segment registers
 xor ax, ax
@@ -217,13 +222,8 @@ mov rdi, VGA_TEXT_BUFFER_ADDR
 mov rax, (FILL_COLOR << 8) | FILL_CHAR
 mov rcx, VGA_TEXT_BUFFER_SIZE / 8
 rep stosq
+jmp kmain
 hlt
-
-push DWORD str.hello
-call print32
-
-jmp halt
-
 
 ; 16 bits functions -------------------------------------------------------------------
 bits 16
