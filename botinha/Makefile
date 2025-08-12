@@ -28,15 +28,8 @@ $(DISK): $(BIN)
 		trap "mdconfig -d -u $$MDDEV" EXIT && \
 		dd if=$(BOOTSEC) of=/dev/$$MDDEV bs=512 oflag=sync status=progress && \
 		gpart add -s $(PARTSZ) -t $(PARTTYP) /dev/$$MDDEV && \
-		newfs_msdos -B ./$(PARTSEC) -F 16 $$MDDEV$(PARTNUM) && \
-		mount -t msdosfs /dev/$$MDDEV$(PARTNUM) /mnt && \
-		cp loader.bin /mnt/loader && \
-		umount /mnt \
+		newfs_msdos -B ./$(PARTSEC) -F 16 $$MDDEV$(PARTNUM)  \
 	'
-
-run: $(BIN) $(DISK)
-	qemu-system-x86_64 -drive format=raw,file=$(DISK)
-
 # -----------------------------------------------------------------------------
 
 clean:

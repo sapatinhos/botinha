@@ -10,7 +10,7 @@ CFLAGS 	:= -ffreestanding
 AFLAGS 	:= -f elf64 
 LD_SCRIPT := link.ld
 
-OUT := kernel.bin
+KERNEL := kernel.bin
 
 .DELETE_ON_ERROR:
 
@@ -24,12 +24,12 @@ all: $(AOBJS) $(COBJS)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-kernel: $(AOBJS) $(COBJS)
+$(KERNEL): $(AOBJS) $(COBJS)
 	$(LD) -T $(LD_SCRIPT) -o kernel.elf
-	objcopy -O binary kernel.elf $(OUT)
+	objcopy -O binary kernel.elf $(KERNEL)
 	rm -f kernel.elf
 
 clean:
-	rm -f $(COBJS) $(AOBJS) $(OUT)
+	rm -f  *.o  $(KERNEL)
 
 .PHONY: all run clean
