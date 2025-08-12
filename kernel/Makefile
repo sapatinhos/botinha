@@ -10,7 +10,7 @@ CFLAGS 	:= -ffreestanding
 AFLAGS 	:= -f elf64 
 LD_SCRIPT := link.ld
 
-KERNEL := kernel.bin
+KERNEL := kernel.sys
 
 .DELETE_ON_ERROR:
 

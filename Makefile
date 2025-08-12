@@ -1,4 +1,4 @@
-KERNEL 	:= kernel.bin
+KERNEL 	:= kernel.sys
 BOOT 	:= botinha
 DISK	:= disk.img
 
@@ -16,7 +16,7 @@ $(DISK): $(KERNEL)
         MDDEV=$$(mdconfig -a -t vnode -f $(DISK)) && \
         trap "mdconfig -d -u $$MDDEV" EXIT && \
         mount -t msdosfs /dev/$${MDDEV}$(PARTNUM) /mnt && \
-        cp $(KERNEL) /mnt/kernel && \
+        cp $(KERNEL) /mnt/kernel.sys && \
         umount /mnt \
     '
 

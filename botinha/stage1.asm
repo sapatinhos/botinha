@@ -307,7 +307,7 @@ jmp halt
 
 str:
 .nextstg:
-    db "KERNEL     "
+    db "KERNEL  SYS"
 
 .readerr:
     db "disk read error", 0
