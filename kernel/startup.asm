@@ -1,5 +1,4 @@
 bits 16
-org 0x8000
 
 %define STACK 0x8000                ; where we are loaded initially
 
@@ -56,7 +55,13 @@ org 0x8000
 %define BYTES_PER_CHARACTER  2
 %define VGA_TEXT_BUFFER_SIZE  BYTES_PER_CHARACTER * COLS * ROWS
 
+
+extern kmain
+
 ; entry point -----------------------------------------------------------------
+
+global startup_entry
+startup_entry:
 
 ; initialize segment registers
 xor ax, ax
@@ -81,6 +86,23 @@ xor di, di
 mov ax, (FILL_COLOR << 8) | FILL_CHAR
 
 rep stosw                   ; fill cx words at es:di with ax
+
+; Disable blink
+	; Read I/O Address 0x03DA to reset index/data flip-flop
+	mov dx, 0x03DA
+	in al, dx
+	; Write index 0x30 to 0x03C0 to set register index to 0x30
+	mov dx, 0x03C0
+	mov al, 0x30
+	out dx, al
+	; Read from 0x03C1 to get register contents
+	inc dx
+	in al, dx
+	; Unset Bit 3 to disable Blink
+	and al, 0xF7
+	; Write to 0x03C0 to update register with changed value
+	dec dx
+	out dx, al
 
 ; enter protected mode ------------------------------------------------------
 
@@ -217,13 +239,7 @@ mov rdi, VGA_TEXT_BUFFER_ADDR
 mov rax, (FILL_COLOR << 8) | FILL_CHAR
 mov rcx, VGA_TEXT_BUFFER_SIZE / 8
 rep stosq
-hlt
-
-push DWORD str.hello
-call print32
-
-jmp halt
-
+jmp kmain
 
 ; 16 bits functions -------------------------------------------------------------------
 bits 16

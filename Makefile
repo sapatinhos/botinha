@@ -1,45 +1,31 @@
-SRC			:= $(wildcard *.asm)
-BIN			:= $(SRC:.asm=.bin)
+KERNEL 	:= kernel.sys
+BOOT 	:= botinha
+DISK	:= disk.img
 
-DISK		:= disk.img
-DISKSZ	:= 64M
-BOOTSEC := stage0.bin
+PARTNUM := s1
 
-PARTNUM := "s1"
-PARTSZ	:= 32M
-PARTTYP	:= '!0x5a'
-PARTSEC	:= stage1.bin
+$(KERNEL):
+	gmake -C ./kernel $(KERNEL)
+	ls -lh
+	cp kernel/$(KERNEL) .
 
-.DELETE_ON_ERROR:
-
-# binaries --------------------------------------------------------------------
-
-all: $(BIN)
-
-%.bin: %.asm
-	nasm $< -o $@
-
-# emulation -------------------------------------------------------------------
-
-$(DISK): $(BIN)
-	truncate -s $(DISKSZ) $(DISK)
+$(DISK): $(KERNEL)
+	gmake -C ./$(BOOT)  $(DISK)
+	cp $(BOOT)/$(DISK) .
 	sudo sh -c '\
-		MDDEV=$$(mdconfig -a -t vnode -f $(DISK)) && \
-		trap "mdconfig -d -u $$MDDEV" EXIT && \
-		dd if=$(BOOTSEC) of=/dev/$$MDDEV bs=512 oflag=sync status=progress && \
-		gpart add -s $(PARTSZ) -t $(PARTTYP) /dev/$$MDDEV && \
-		newfs_msdos -B ./$(PARTSEC) -F 16 $$MDDEV$(PARTNUM) && \
-		mount -t msdosfs /dev/$$MDDEV$(PARTNUM) /mnt && \
-		cp loader.bin /mnt/loader && \
-		umount /mnt \
-	'
+        MDDEV=$$(mdconfig -a -t vnode -f $(DISK)) && \
+        trap "mdconfig -d -u $$MDDEV" EXIT && \
+        mount -t msdosfs /dev/$${MDDEV}$(PARTNUM) /mnt && \
+        cp $(KERNEL) /mnt/kernel.sys && \
+        umount /mnt \
+    '
 
-run: $(BIN) $(DISK)
+run: $(DISK)
 	qemu-system-x86_64 -drive format=raw,file=$(DISK)
 
 # -----------------------------------------------------------------------------
 
 clean:
-	rm -f $(BIN) $(DISK)
-
-.PHONY: all run clean
+	make -C ./kernel clean
+	make -C ./botinha clean
+	rm -f $(KERNEL) $(DISK)
